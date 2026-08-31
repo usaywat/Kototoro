@@ -38,6 +38,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import okhttp3.OkHttpClient
 import org.skepsun.kototoro.R
+import org.skepsun.kototoro.backups.external.MihonForkBuiltinSources
 import org.skepsun.kototoro.core.util.ext.getDisplayMessage
 import org.skepsun.kototoro.core.db.entity.JsonSourceEntity
 import org.skepsun.kototoro.core.db.entity.JsonSourceType
@@ -116,6 +117,7 @@ class UnifiedSourcesViewModel @Inject constructor(
     private val ireaderExtensionManager: IReaderExtensionManager,
     private val tsundokuExtensionManager: TsundokuExtensionManager,
     private val cloudstreamRuntimeManager: org.skepsun.kototoro.cloudstream.runtime.CloudstreamRuntimeManager,
+    private val database: org.skepsun.kototoro.core.db.MangaDatabase,
     private val savedStateHandle: SavedStateHandle,
 ) : BaseViewModel() {
 
@@ -172,18 +174,32 @@ class UnifiedSourcesViewModel @Inject constructor(
      * state — never waits for this potentially multi-second rebuild.
      */
     private val baseSourcesUiState: Flow<UnifiedSourcesUiState.Ready> = combine(
-        catalogRepository.observeState(),
-        availableExternalExtensions,
-        installService.downloadStates,
-        filterState,
-        lnReaderPackageSnapshot,
-    ) { catalog, availableExtensions, downloadStates, filters, lnReaderSnapshot ->
-        catalog
-            .withAvailableExternalPackages(availableExtensions, downloadStates)
-            .withAvailableLnReaderPackages(lnReaderSnapshot.plugins, lnReaderSnapshot.installingPackageIds)
-            .withAvailableJsonPackages(lnReaderSnapshot.jsonPackages)
-            .toUiState(filters)
+        combine(
+            catalogRepository.observeState(),
+            availableExternalExtensions,
+            installService.downloadStates,
+            filterState,
+            lnReaderPackageSnapshot,
+        ) { catalog, availableExtensions, downloadStates, filters, lnReaderSnapshot ->
+            CatalogInputs(catalog, availableExtensions, downloadStates, filters, lnReaderSnapshot)
+        },
+        database.getSourceOriginsDao().observeAll(),
+    ) { inputs, sourceOrigins ->
+        inputs.catalog
+            .withAvailableExternalPackages(inputs.availableExtensions, inputs.downloadStates)
+            .withAvailableLnReaderPackages(inputs.lnReaderSnapshot.plugins, inputs.lnReaderSnapshot.installingPackageIds)
+            .withAvailableJsonPackages(inputs.lnReaderSnapshot.jsonPackages)
+            .toUiState(inputs.filters)
+            .withMissingSourceRecommendations(sourceOrigins, inputs.availableExtensions)
     }.flowOn(Dispatchers.Default)
+
+    private data class CatalogInputs(
+        val catalog: UnifiedSourceCatalogState,
+        val availableExtensions: List<RepoAvailableExtension>,
+        val downloadStates: Map<String, ExtensionInstallDownloadState>,
+        val filters: UnifiedSourcesFilterState,
+        val lnReaderSnapshot: AvailablePackageSnapshot,
+    )
 
     val uiState: StateFlow<UnifiedSourcesUiState> = combine(
         baseSourcesUiState,
@@ -1787,6 +1803,98 @@ class UnifiedSourcesViewModel @Inject constructor(
                 .distinct()
                 .sortedBy { it.ordinal },
             availableLanguages = availableLanguages,
+        )
+    }
+
+    /**
+     * Builds the "Recommended" package group for the packages tab: sources recorded in
+     * `source_origins` by external backup imports (kind MIHON/ANIYOMI, numeric id) whose
+     * extension is neither installed nor covered by a fork-builtin native parser are
+     * matched against the store indexes by source id. Matched extensions become install
+     * recommendations; the rest are surfaced together with suggested repositories.
+     */
+    private fun UnifiedSourcesUiState.Ready.withMissingSourceRecommendations(
+        sourceOrigins: List<org.skepsun.kototoro.core.db.entity.SourceOriginEntity>,
+        availableExtensions: List<RepoAvailableExtension>,
+    ): UnifiedSourcesUiState.Ready {
+        val candidates = sourceOrigins.asSequence()
+            .filter { it.kind == "MIHON" || it.kind == "ANIYOMI" }
+            .mapNotNull { origin ->
+                val id = origin.sourceKey.substringAfter('_', "").toLongOrNull() ?: return@mapNotNull null
+                val kind = if (origin.kind == "ANIYOMI") UnifiedSourceKind.ANIYOMI else UnifiedSourceKind.MIHON
+                Triple(origin, id, kind)
+            }
+            .toList()
+        if (candidates.isEmpty()) {
+            return this
+        }
+        val installedSourceIds = allSources.asSequence()
+            .filter { it.kind == UnifiedSourceKind.MIHON || it.kind == UnifiedSourceKind.ANIYOMI }
+            .mapNotNull { it.source.name.substringAfter('_', "").toLongOrNull() }
+            .toSet()
+        val nativeSourceNames = allSources.mapTo(HashSet()) { it.source.name }
+        val missingCandidates = candidates.filter { (_, id, kind) ->
+            if (id in installedSourceIds) {
+                return@filter false
+            }
+            if (kind != UnifiedSourceKind.MIHON) {
+                // Anime sources have no fork-builtin native fallback table.
+                return@filter true
+            }
+            MihonForkBuiltinSources.nativeSourceNameForId(id)?.let(nativeSourceNames::contains) != true
+        }
+        if (missingCandidates.isEmpty()) {
+            return copy(
+                recommendedPackages = emptyList(),
+                missingSourcesWithoutMatch = emptyList(),
+                suggestedRepositoriesForMissing = emptyList(),
+            )
+        }
+        val candidateIds = missingCandidates.mapTo(HashSet()) { it.second }
+        val labelById = HashMap<Long, String>()
+        missingCandidates.forEach { (origin, id, _) ->
+            labelById[id] = origin.displayName?.takeIf { it.isNotBlank() } ?: origin.sourceKey
+        }
+        val recommendedPackages = allPackages
+            .filter { item ->
+                !item.isInstalled && item.installPayload?.sourceIds.orEmpty().any { it in candidateIds }
+            }
+            .map { item ->
+                val covered = item.installPayload?.sourceIds.orEmpty()
+                    .mapNotNull(labelById::get)
+                    .distinct()
+                RecommendedPackageItem(item = item, coversMissingSources = covered)
+            }
+            .sortedWith(
+                compareByDescending<RecommendedPackageItem> { it.coversMissingSources.size }
+                    .thenBy { it.item.name.lowercase() },
+            )
+        val coveredIds = recommendedPackages
+            .asSequence()
+            .flatMap { it.item.installPayload?.sourceIds.orEmpty().asSequence() }
+            .toSet()
+        val missingSourcesWithoutMatch = missingCandidates
+            .filter { (_, id, _) -> id !in coveredIds }
+            .map { (origin, _, kind) ->
+                MissingSourceHint(kind = kind, sourceKey = origin.sourceKey, displayName = origin.displayName)
+            }
+        val suggestedKinds = missingSourcesWithoutMatch.map { it.kind }.toSet()
+        // Only actually configured repos count: the repository list always contains the
+        // recommended presets (isConfigured=false) under the very same URL, so comparing
+        // against all items would filter out every suggestion.
+        val configuredUrls = repositories.filterTo(HashSet()) { it.isConfigured }.mapTo(HashSet()) { it.url }
+        val suggestedRepositoriesForMissing = suggestedKinds
+            .flatMap(UnifiedRecommendedRepositories::byKind)
+            .filter { suggestion ->
+                configuredUrls.none { configured ->
+                    normalizeRepositoryUrlForAction(configured) == normalizeRepositoryUrlForAction(suggestion.url)
+                }
+            }
+            .distinctBy { it.url }
+        return copy(
+            recommendedPackages = recommendedPackages,
+            missingSourcesWithoutMatch = missingSourcesWithoutMatch,
+            suggestedRepositoriesForMissing = suggestedRepositoriesForMissing,
         )
     }
 

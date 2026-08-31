@@ -22,8 +22,6 @@ import org.skepsun.kototoro.parsers.model.Content
 import org.skepsun.kototoro.space.ui.LocalBrowseSpaceId
 import org.skepsun.kototoro.space.ui.spaceViewModelKey
 
-private const val FAVORITES_LOAD_MORE_VISIBLE_THRESHOLD = 48
-
 @Composable
 fun KototoroFavoritesListScreen(
     categoryId: Long,
@@ -68,9 +66,8 @@ fun KototoroFavoritesListScreen(
         sharedTransitionEnabled = sharedTransitionEnabled,
         sharedElementInstanceKey = "main_favorites_$categoryId",
         registerFilterCallback = false,
-        pullRefreshEnabled = false,
-        onLoadMore = { viewModel.requestMoreItems() },
-        loadMoreVisibleThreshold = FAVORITES_LOAD_MORE_VISIBLE_THRESHOLD,
+        pullRefreshEnabled = true,
+        pullRefreshAction = { viewModel.checkForUpdates() },
         onNavigateToDetails = { _, content, sharedKey ->
             if (onNavigateToDetails != null) {
                 onNavigateToDetails(content, sharedKey)

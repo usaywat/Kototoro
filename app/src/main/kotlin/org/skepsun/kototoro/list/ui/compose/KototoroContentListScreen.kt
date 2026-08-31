@@ -2,6 +2,8 @@ package org.skepsun.kototoro.list.ui.compose
 
 import coil3.compose.AsyncImage
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -206,6 +208,9 @@ fun KototoroContentListScreen(
     onRetry: () -> Unit = {},
     onSecondaryAction: ((Throwable) -> Unit)? = null,
     showInlineSelectionTopBar: Boolean = true,
+    inlineSelectionBarAnimated: Boolean = true,
+    inlineSelectionSupportedActions: Set<SelectionAction>? = null,
+    inlineSelectionIncludeContextualActions: Boolean = true,
     showQuickFilterInline: Boolean = true,
     enableItemAnimations: Boolean = true,
     modifier: Modifier = Modifier,
@@ -217,22 +222,33 @@ fun KototoroContentListScreen(
 ) {
     val leadingItemCount = if (pagingItems == null) 0 else items.size
     val pagingItemCount = pagingItems?.itemCount ?: 0
-    val itemCount = if (pagingItems == null) items.size else leadingItemCount + pagingItemCount
+    val combinedIndex = remember(items.size, pagingItems != null, pagingItemCount) {
+        CombinedContentListIndex(
+            leadingCount = if (pagingItems == null) items.size else leadingItemCount,
+            pagingCount = pagingItemCount,
+        )
+    }
+    val itemCount = combinedIndex.itemCount
     val pagingRefreshState = pagingItems?.loadState?.refresh
     fun peekItem(index: Int): ListModel? {
-        if (pagingItems == null || index < leadingItemCount) {
-            return items.getOrNull(index)
+        val pagingSnapshot = pagingItems?.itemSnapshotList
+        return when (val origin = combinedIndex.origin(index, pagingSnapshot?.size ?: 0)) {
+            is ContentListItemOrigin.Leading -> items[origin.index]
+            is ContentListItemOrigin.Paging -> pagingSnapshot?.get(origin.index)
+            ContentListItemOrigin.OutOfBounds -> null
         }
-        return runCatching { pagingItems.peek(index - leadingItemCount) }.getOrNull()
     }
     fun getItem(index: Int): ListModel? {
-        if (pagingItems == null || index < leadingItemCount) {
-            return items.getOrNull(index)
+        val currentPagingItems = pagingItems
+        return when (val origin = combinedIndex.origin(index, currentPagingItems?.itemCount ?: 0)) {
+            is ContentListItemOrigin.Leading -> items[origin.index]
+            is ContentListItemOrigin.Paging -> currentPagingItems?.getDuringSnapshotChangeOrNull(origin.index)
+            ContentListItemOrigin.OutOfBounds -> null
         }
-        return runCatching { pagingItems[index - leadingItemCount] }.getOrNull()
     }
-    fun itemKey(index: Int): Any = peekItem(index)?.let { listModelComposeKey(it, index) }
-        ?: "paging_placeholder:$index"
+    fun itemDescriptor(index: Int): ContentListItemDescriptor =
+        contentListItemDescriptor(peekItem(index), index)
+    fun itemKey(index: Int): Any = itemDescriptor(index).key
     val canLoadMore = remember(items, pagingItems?.itemCount, hasMoreItems) {
         pagingItems == null && hasMoreItems && items.any { it is ContentListModel }
     }
@@ -382,7 +398,7 @@ fun KototoroContentListScreen(
                                         }
                                     },
                                     contentType = { index ->
-                                        if (peekItem(index) is ContentGridModel) "grid_card" else "supplementary"
+                                        itemDescriptor(index).contentType
                                     },
                                 ) { index ->
                                     val listModel = getItem(index) ?: return@items
@@ -455,12 +471,12 @@ fun KototoroContentListScreen(
                                 count = itemCount,
                                 key = ::itemKey,
                                 contentType = { index ->
-                                    if (peekItem(index) is ContentCompactListModel) "list_card" else "supplementary"
+                                    itemDescriptor(index).contentType
                                 },
                             ) { index ->
                                 val listModel = getItem(index) ?: return@items
                                 VerticalRailAnimatedVisibility(
-                                    animationKey = listModelComposeKey(listModel, index),
+                                    animationKey = itemDescriptor(index).key,
                                     index = index,
                                     listState = actualListState,
                                     isAnimationEnabled = isVerticalCardListAnimationEnabled,
@@ -524,12 +540,12 @@ fun KototoroContentListScreen(
                                 count = itemCount,
                                 key = ::itemKey,
                                 contentType = { index ->
-                                    if (peekItem(index) is ContentDetailedListModel) "detailed_card" else "supplementary"
+                                    itemDescriptor(index).contentType
                                 },
                             ) { index ->
                                 val listModel = getItem(index) ?: return@items
                                 VerticalRailAnimatedVisibility(
-                                    animationKey = listModelComposeKey(listModel, index),
+                                    animationKey = itemDescriptor(index).key,
                                     index = index,
                                     listState = actualListState,
                                     isAnimationEnabled = isVerticalCardListAnimationEnabled,
@@ -573,8 +589,16 @@ fun KototoroContentListScreen(
         // Selection Contextual TopBar overlay
         AnimatedVisibility(
             visible = showInlineSelectionTopBar && selectedItemsIds.isNotEmpty(),
-            enter = slideInVertically(initialOffsetY = { -it }),
-            exit = slideOutVertically(targetOffsetY = { -it }),
+            enter = if (inlineSelectionBarAnimated) {
+                slideInVertically(initialOffsetY = { -it })
+            } else {
+                EnterTransition.None
+            },
+            exit = if (inlineSelectionBarAnimated) {
+                slideOutVertically(targetOffsetY = { -it })
+            } else {
+                ExitTransition.None
+            },
             modifier = Modifier.align(Alignment.TopCenter)
         ) {
             val selectedModels = (pagingItems?.itemSnapshotList?.items ?: items)
@@ -587,10 +611,22 @@ fun KototoroContentListScreen(
                 isAllNonLocal = isAllNonLocal,
                 isSingleSelection = selectedItemsIds.size == 1,
                 showRemoveOption = showRemoveOption,
+                supportedActions = inlineSelectionSupportedActions,
+                includeContextualActions = inlineSelectionIncludeContextualActions,
                 onClearSelection = onClearSelection,
                 onActionClick = onSelectionAction
             )
         }
+    }
+}
+
+private fun <T : Any> LazyPagingItems<T>.getDuringSnapshotChangeOrNull(index: Int): T? {
+    if (index !in 0 until itemCount) return null
+    return try {
+        this[index]
+    } catch (_: IndexOutOfBoundsException) {
+        // Paging can publish a shorter snapshot after LazyLayout captured its previous item count.
+        null
     }
 }
 
@@ -1183,7 +1219,7 @@ private fun SkeletonBlock(
 }
 
 @Composable
-private fun chipIcon(chip: ChipModel): (@Composable () -> Unit)? {
+internal fun chipIcon(chip: ChipModel): (@Composable () -> Unit)? {
     if (chip.isChecked) {
         return {
             Icon(
@@ -1216,27 +1252,8 @@ private fun chipIcon(chip: ChipModel): (@Composable () -> Unit)? {
     }
 }
 
-private fun listModelComposeKey(
-    listModel: ListModel,
-    index: Int,
-): String = when (listModel) {
-    is ContentListModel -> "${listModel.javaClass.simpleName}:${listModel.id}"
-    // Keep the position suffix on supplementary rows: without it, two headers whose
-    // hashCode collides (e.g. MinutesAgo(n) / HoursAgo(n) / DaysAgo(n) / MonthsAgo(n) all
-    // hash to the same value, or the same header emitted twice by a paging pipeline)
-    // produce a duplicate LazyGrid/LazyColumn key and crash with
-    // "Key header:... was already used".
-    is ListHeader -> "header:${listModel.hashCode()}:$index"
-    is QuickFilter -> "quick_filter:$index"
-    is InfoModel -> "info:${listModel.hashCode()}:$index"
-    is EmptyState -> "empty_state:${listModel.hashCode()}:$index"
-    is ErrorState -> "error_state:${listModel.hashCode()}:$index"
-    LoadingState -> "loading_state:$index"
-    else -> "${listModel.javaClass.name}:${listModel.hashCode()}:$index"
-}
-
 @Composable
-private fun buildChipLabel(
+internal fun buildChipLabel(
     context: android.content.Context,
     chip: ChipModel,
     entryPoint: BaseApp.BaseAppEntryPoint?,

@@ -97,7 +97,8 @@
     <string name="updated">Updated</string>
     <string name="newest">Newest</string>
     <string name="by_rating">Rating</string>
-    <string name="sort_order">Sorting order</string>
+	<string name="sort_order">Sorting order</string>
+	<string name="sort_and_language">Sorting and language</string>
     <string name="filter">Filter</string>
     <string name="saved_filters">Saved filters</string>
     <string name="theme">Appearance mode</string>
@@ -135,6 +136,7 @@
     <string name="double_page_cover_page">First page as cover (solo)</string>
     <string name="miscellaneous">Miscellaneous</string>
     <string name="grid_size">Grid size</string>
+    <string name="home_rail_rows_per_page">Rows per page</string>
     <string name="grid_aspect_ratio">Grid ratio</string>
     <string name="fit_page_thumbnails">Fit page thumbnails</string>
     <string name="display_options">Display options</string>
@@ -201,6 +203,7 @@
     <string name="text_local_holder_secondary">Save something from an online catalog or import it from a file.</string>
     <string name="manga_shelf">Shelf</string>
     <string name="recent_manga">Recent</string>
+    <string name="continue_reading">Continue reading</string>
     <string name="pages_animation">Page animation</string>
     <string name="manga_save_location">Manga downloads folder</string>
     <string name="novel_save_location">Novel downloads folder</string>
@@ -208,6 +211,7 @@
     <string name="not_available">Not available</string>
     <string name="not_set">Not set</string>
     <string name="cannot_find_available_storage">No available storage</string>
+<string name="error_cannot_write_to_storage">Cannot write to the download directory. Check its access permission, free space, or pick another folder in settings</string>
     <string name="other_storage">Other storage</string>
     <string name="done">Done</string>
     <string name="all_favourites">All favorites</string>
@@ -302,6 +306,12 @@
     <string name="clear_feed">Clear feed</string>
     <string name="text_clear_updates_feed_prompt">Clear all update history permanently?</string>
     <string name="check_for_new_chapters">Check for new chapters</string>
+    <string name="checking_for_updates">Checking for updates…</string>
+    <string name="favourites_updates_found">Found new chapters in %1$d works (%2$d total)</string>
+    <string name="favourites_no_updates">No new chapters found</string>
+    <string name="updates_check_still_running">Update check is still running in the background</string>
+    <string name="updates_check_in_progress">An update check is already in progress</string>
+    <string name="updates_check_too_soon">Checked recently, please try again in a moment</string>
     <string name="reverse">Reverse</string>
     <string name="chapters_grid_view">Grid view</string>
     <string name="hide_read_chapters">Hide read chapters</string>
@@ -329,6 +339,8 @@
     <string name="welcome_step_ready">Ready</string>
     <string name="welcome_appearance_title">Customize the interface</string>
     <string name="welcome_appearance_summary">Choose the visual style, navigation transitions, and details page panorama behavior. These options can be changed later in Appearance settings.</string>
+    <string name="welcome_glass_preset_title">Glass finish</string>
+    <string name="welcome_glass_preset_summary">Pick the glass finish preset for the iOS style. Refraction is the default and can be fine-tuned later in Appearance settings.</string>
     <string name="home_quick_action_wizard">Wizard</string>
     <string name="welcome_restore_summary">Already used Kototoro before? Restore a backup, sign in to sync, or add local folders first.</string>
     <string name="welcome_source_formats_title">Pick content formats</string>
@@ -1037,6 +1049,8 @@
     <string name="import_backup_supported_apps_summary">Mihon, Komikku, Aniyomi, Anikku, Animiru, Venera</string>
     <string name="import_backup_scope_summary">This version restores favorites, history, and imported reading progress metadata.</string>
     <string name="import_backup_started_background">The external backup will be imported in the background</string>
+    <string name="import_backup_mihon_note">Includes TachiyomiSY and Neko backups. Their built-in E-Hentai, ExHentai, and MangaDex entries are mapped to Kototoro native sources automatically.</string>
+    <string name="import_backup_komikku_note">Komikku\'s built-in E-Hentai and ExHentai entries are mapped to the Kototoro native E-Hentai source automatically.</string>
     <string name="server_address">Server address</string>
     <string name="sync_host_description">You can use a self-hosted synchronization server or a default one. Don\'t change this if you\'re not sure what you\'re doing.</string>
     <string name="ignore_ssl_errors">Ignore SSL errors</string>
@@ -1088,8 +1102,25 @@
     <string name="restore_summary">Restore previously created backup</string>
     <string name="restore_kototoro_backup">Restore current Kototoro backup</string>
     <string name="restore_kototoro_backup_summary">Restore a Kototoro backup using the current semantic schema v3. Kotatsu and legacy backups are rejected here.</string>
+    <string name="restore_mode_replace_existing">Replace existing data</string>
+    <string name="restore_mode_replace_existing_summary">Sections being restored are cleared first; favourites and history missing from the backup are removed</string>
+    <string name="restore_mode_merge_with_existing">Merge with existing data</string>
+    <string name="restore_mode_merge_with_existing_summary">Keep current data and add or update entries from the backup; nothing is deleted</string>
     <string name="import_kotatsu_or_legacy_backup">Import Kotatsu or legacy Kototoro backup</string>
     <string name="import_kotatsu_or_legacy_backup_summary">Import a Kotatsu-family backup or a Kototoro backup using semantic schema v1/v2. Source and app settings are always ignored.</string>
+    <string name="external_import_result_title">External backup imported</string>
+    <string name="external_import_result_summary">Imported %1$d favorites and %2$d history entries.</string>
+    <string name="external_import_result_uninstalled_header">Sources not installed — favorites were imported as-is. Install the matching extension to re-link them:</string>
+    <string name="external_import_result_uninstalled_item">• %1$s — %2$d entries</string>
+    <string name="external_import_result_failed">%1$d entries could not be matched to any source and were skipped.</string>
+    <string name="external_import_result_consolidation_pending">Some duplicated works could not be merged yet; they may appear several times in categories. A retry runs automatically on the next app start.</string>
+    <string name="packages_recommended_header">Recommended</string>
+    <string name="packages_recommended_count">%1$d packages</string>
+    <string name="packages_recommended_missing_count">%1$d missing sources</string>
+    <string name="packages_recommended_caption">Extensions covering sources missing from your imported backups</string>
+    <string name="packages_recommended_covers">Covers missing: %1$s</string>
+    <string name="packages_missing_sources_hint">%1$d missing sources are not covered by your repositories:</string>
+    <string name="packages_missing_sources_add_repo">Add a repository to find them, for example:</string>
     <string name="webtoon_zoom_summary">Allow zoom in gesture in webtoon mode</string>
     <string name="pull_to_prev_chapter">Release to open previous chapter</string>
     <string name="pull_to_next_chapter">Release to open next chapter</string>
@@ -1931,6 +1962,7 @@
     <string name="reader_translation_task_filter_all">All</string>
     <string name="reader_translation_task_filter_failed">Failed</string>
     <string name="reader_translation_task_filter_ocr_empty">OCR empty</string>
+    <string name="reader_translation_task_filter_ocr_engine">OCR engine failed</string>
     <string name="reader_translation_task_filter_translate_empty">Translation empty</string>
     <string name="reader_translation_task_filter_render_filtered">Render filtered</string>
     <string name="reader_translation_task_filter_exception">Exception</string>
@@ -2324,6 +2356,7 @@
     <string name="all_sources_enabled">All sources are enabled</string>
     <string name="reader_chapter_toast">Show chapter change popup</string>
     <string name="reader_chapter_toast_summary">Show a pop-up message with a chapter title when it is changed</string>
+    <string name="reader_chapter_title_at_bottom">Show chapter title at the bottom</string>
     <string name="reader_info_bar_transparent">Transparent reader information bar</string>
     <string name="backup_restored_background">The backup will be restored in the background</string>
     <string name="restoring_backup">Restoring backup</string>
@@ -2963,12 +2996,83 @@
     <!-- Welcome Init UI -->
     <string name="welcome_plugins_title">Initialize Plugin Sources</string>
     <string name="welcome_plugins_summary">Initialize the recommended plugin repositories now so Explore is usable immediately. Advanced repository changes can be done later in extension management.</string>
+    <string name="welcome_sources_kinds_title">Source types</string>
     <string name="welcome_plugins_repo_kototoro">Kototoro Parsers</string>
     <string name="welcome_plugins_repo_yakateam">Yakateam Parsers</string>
     <string name="welcome_plugins_repo_redo">Redo Parsers</string>
     <string name="welcome_plugins_repo_uma">UMA (Tsuki Parsers)</string>
     <string name="welcome_plugins_disclaimer">These extension repositories are maintained by independent online communities. The Kototoro developers have no affiliation, control, or association with these third-party repositories. I acknowledge that I am configuring these sources at my own risk.</string>
-    <string name="welcome_plugins_start_btn">1-Click Initialize</string>
+    <string name="welcome_plugins_start_btn">Configure repositories</string>
+    <string name="welcome_plugins_configured">Configured %1$d new source/repository type(s): %2$s. Packages are not downloaded yet — install matchings ones on the next step.</string>
+    <string name="welcome_plugins_configured_none">No source or repository could be configured. Check your network or pick different repositories and try again.</string>
+
+    <string name="welcome_repos_configured_title">Repositories configured</string>
+    <string name="welcome_repos_configured_message">Configured %1$d repository type(s): %2$s.\n\nNext, pick which source types to batch-install: JAR / APK / Cloudstream packages are downloaded and installed, and Legado / TVBox / LNReader sources are imported automatically.\n\nYou can also skip installation and do everything later in Extension Management.</string>
+    <string name="welcome_repos_configured_next">Next</string>
+    <string name="welcome_open_extension_management">Open extension manager</string>
+    <string name="welcome_install_mode_title">APK install mode</string>
+    <string name="welcome_install_mode_summary">For Mihon, Aniyomi, IReader and Tsundoku packages.</string>
+    <string name="welcome_install_mode_sideload">Sideload (built-in, recommended)</string>
+    <string name="welcome_install_mode_system">System installer</string>
+    <string name="welcome_install_section_title">Install matching extensions</string>
+    <string name="welcome_install_section_summary">Packages are matched by the languages above, then enabled by the content formats you pick.</string>
+    <string name="welcome_install_plan_empty">No packages to install. Add repositories in the first step, or select more languages.</string>
+    <string name="welcome_install_plan_summary">Will install %1$d package(s): %2$s.</string>
+    <string name="welcome_install_start">Start install</string>
+    <string name="welcome_install_cancel">Cancel</string>
+    <string name="welcome_install_progress">Installed %1$d / %2$d</string>
+    <string name="welcome_install_state_queued">Queued</string>
+    <string name="welcome_install_state_downloading">Downloading</string>
+    <string name="welcome_install_state_installing">Installing</string>
+    <string name="welcome_install_state_completed">Done</string>
+    <string name="welcome_install_state_failed">Failed</string>
+    <string name="welcome_install_state_cancelled">Cancelled</string>
+    <string name="welcome_install_done_title">Installation finished</string>
+    <string name="welcome_install_done_message">Succeeded %1$d · Failed %2$d · Cancelled %3$d.\n\nSources matching your selected content formats and languages are enabled. Legado / TVBox / LNReader sources were imported; for any other JSON repositories you add later, import them in the extension manager.</string>
+    <string name="welcome_install_system_launch_failed">Could not launch the system installer: %1$s</string>
+    <string name="welcome_install_skip">Skip installation — I\'ll do it in Extension Management later</string>
+    <string name="welcome_install_step_title">Batch install extensions</string>
+    <string name="welcome_install_step_summary">Pick which source types and settings to use, then let Kototoro download and install everything in the background.</string>
+    <string name="welcome_install_kinds_title">Source types to install</string>
+    <string name="welcome_install_kinds_summary">Only the types you checked will be handled. Unchecked ones (e.g. Mihon, if you prefer doing it later) stay for you to install in Extension Management.</string>
+    <string name="welcome_install_kinds_empty">No repositories configured yet. Go back and add repositories first.</string>
+    <string name="welcome_install_nsfw_title">Include NSFW content</string>
+    <string name="welcome_install_nsfw_summary">Off by default — adult-only packages are filtered out of the installation list.</string>
+
+    <string name="welcome_intro_app_title">Kototoro · Open-source reader</string>
+    <string name="welcome_intro_body">Kototoro is an open-source multimedia reader / player. It supports a wide ecosystem of community extensions, but it does not bundle any content sources of its own.</string>
+    <string name="welcome_intro_concepts_title">Three concepts, in 30 seconds</string>
+    <string name="welcome_intro_repo_label">Repository (仓库)</string>
+    <string name="welcome_intro_repo_body">A URL to a third-party collection of extensions, maintained by an independent community (for example Mihon repos, TVBox lists or LNReader plugin repos).</string>
+    <string name="welcome_intro_extension_label">Extension (拓展)</string>
+    <string name="welcome_intro_extension_body">One installable package inside a repository — a JAR, an APK or a JSON list. Installed extensions give Kototoro the ability to read or play from a site.</string>
+    <string name="welcome_intro_source_label">Source (源)</string>
+    <string name="welcome_intro_source_body">One concrete content source you see in the app after an extension is installed or imported — for example a specific manga or video website.</string>
+    <string name="welcome_intro_disclaimer">Use of third-party extensions is entirely at your own risk: runtime behaviour, legality and content are not controlled by the Kototoro project.</string>
+    <string name="welcome_intro_continue">I understand — continue</string>
+
+    <string name="welcome_done_title">Almost there</string>
+    <string name="welcome_done_summary">Your setup summary and a few tips.</string>
+    <string name="welcome_done_skipped">You chose to skip the batch install. Head to Extension Management whenever you are ready.</string>
+    <string name="welcome_done_summary_text">Succeeded %1$d · Failed %2$d · Cancelled %3$d. Sources matching your selected content types and languages are enabled.</string>
+    <string name="welcome_done_json_note">JSON-based types (Legado / TVBox / LNReader) are imported automatically; if you also added other JSON repositories, import them in Extension Management.</string>
+    <string name="welcome_done_advice_title">If a source does not work</string>
+    <string name="welcome_done_advice_summary">A short troubleshooting path, so the right people see the report.</string>
+    <string name="welcome_done_advice_body">1. Confirm the issue using the original host app of the extension — for example a Mihon-type source should be tested in the Mihon app.\n2. If the problem also happens there, it belongs to the repository that maintains the extension: open an issue at the repository\'s own URL.\n3. If it only happens in Kototoro, report it in the Kototoro project repository and include the source name, the extension version and what you tried.</string>
+
+    <string name="welcome_permissions_title">Permissions &amp; background survival</string>
+    <string name="welcome_permissions_summary">A few optional permissions keep downloads, updates and the server-like features reliable.</string>
+    <string name="welcome_permissions_note">These are optional but recommended. You can also change them later from the system settings.</string>
+    <string name="welcome_permissions_grant">Grant</string>
+    <string name="welcome_permissions_granted">OK</string>
+    <string name="welcome_permissions_notifications_title">Notifications</string>
+    <string name="welcome_permissions_notifications_summary">Shows download, update and player notifications.</string>
+    <string name="welcome_permissions_packages_title">Installed apps</string>
+    <string name="welcome_permissions_packages_summary">Lets Kototoro detect already-installed extensions and the host apps (Mihon, Aniyomi, …). Declared in the manifest and granted automatically.</string>
+    <string name="welcome_permissions_battery_title">Background survival</string>
+    <string name="welcome_permissions_battery_summary">Keeps background downloads and updates running when the screen is off or the device is idle.</string>
+    <string name="welcome_permissions_battery_action">Allow</string>
+    <string name="welcome_permissions_battery_failed">Could not open battery settings: %1$s</string>
 
     <string name="download_threads">Download threads</string>
     <string name="download_threads_summary">Number of concurrent image downloads (1-10)</string>
@@ -3312,7 +3416,9 @@
     <string name="pref_bangumi_mirror">Bangumi Mirror</string>
     <string name="pref_bangumi_mirror_summary">Use a mirror for public Bangumi search, browsing, and details. OAuth authorization still uses the official site.</string>
     <string name="pref_bangumi_mirror_custom_base">Custom Bangumi mirror base URL</string>
-    <string name="pref_bangumi_mirror_custom_base_summary">Enter the web base URL, for example https://bangumi.one. The API host is inferred as api.&lt;host&gt;.</string>
+    <string name="pref_bangumi_mirror_custom_base_summary">Enter the web base URL, for example https://bangumi.pro. The API host is inferred as api.&lt;host&gt; unless you set it below.</string>
+    <string name="pref_bangumi_mirror_custom_api_base">Custom Bangumi mirror API URL</string>
+    <string name="pref_bangumi_mirror_custom_api_base_summary">Optional API base URL, for example https://api.bangumi.pro. Leave blank to infer it from the web base URL.</string>
     <string-array name="pref_huggingface_mirror_entries">
         <item>Direct Native (Default)</item>
         <item>hf-mirror.com</item>
@@ -3341,6 +3447,8 @@
     <string name="pref_nav_indicator_style_labels_right">Labels at the right of icons</string>
     <string name="pref_nav_full_width">Full-width navigation bar</string>
     <string name="pref_nav_full_width_summary">Stretch the floating navigation bar across the full screen width</string>
+    <string name="pref_nav_capsule">Capsule background</string>
+    <string name="pref_nav_capsule_summary">Wrap the selected item in a capsule pill; keep it off to highlight with the accent color only</string>
     <string name="pref_nav_floating_adaptive_width">Adaptive floating navigation width</string>
     <string name="pref_nav_floating_adaptive_width_summary">Reduce the floating navigation bar width when fewer navigation items are shown</string>
     <string name="pref_nav_height">Navigation bar height</string>
@@ -3439,6 +3547,8 @@
     <string name="clear_crash_logs_confirm">Delete all recorded crash logs?</string>
     <string name="crash_logs_cleared">Crash logs cleared</string>
     <string name="copy">Copy</string>
+    <string name="details_copy_title">Copy title</string>
+    <string name="details_title_copied">Title copied to clipboard</string>
     <!-- Title translation (#133) -->
     <string name="translate_title">Translate title</string>
     <string name="details_translate_title_and_description_hint">Translate title and description</string>

@@ -147,6 +147,11 @@ fun KototoroTopBar(
     isSourceTagFilterVisible: Boolean = true,
     onSourceTagFilterClick: (android.view.View?) -> Boolean = { false },
     onSourceTagSelected: (SourceTag?) -> Unit = {},
+    /**
+     * Optional page-provided content for the source-tag filter popup. When non-null it
+     * replaces the default single-tag menu; [close] dismisses the popup.
+     */
+    sourceTagCustomMenuContent: (@Composable ((close: () -> Unit) -> Unit))? = null,
     supportsDisplayModeMenu: Boolean = false,
     currentListMode: ListMode = ListMode.GRID,
     onListModeSelected: (ListMode) -> Unit = {},
@@ -159,6 +164,10 @@ fun KototoroTopBar(
     onBrowseMoreTrackingRecommendationsChange: ((Boolean) -> Unit)? = null,
     showSourceSettingsEntry: Boolean = false,
     contextualMenuActions: List<KototoroTopBarMenuAction> = emptyList(),
+    // When set, the "display options" menu item routes to a destination-owned
+    // panel instead of the generic DisplayOptionsSheet (used by home to open
+    // its three-section paged config).
+    onDisplayOptionsClick: (() -> Unit)? = null,
     isIncognitoModeEnabled: Boolean = false,
     onIncognitoToggle: () -> Unit = {},
     isCollapsedFullyTransparent: Boolean = false,
@@ -296,6 +305,7 @@ fun KototoroTopBar(
                                     onTagSelected = onSourceTagSelected,
                                     buttonSize = topBarControlHeight,
                                     iconSize = topBarIconSize,
+                                    customMenuContent = sourceTagCustomMenuContent,
                                 )
                             }
                             if (showMoreActions) {
@@ -358,7 +368,12 @@ fun KototoroTopBar(
                                             },
                                             onClick = {
                                                 isMoreMenuExpanded = false
-                                                showDisplayOptionsSheet = true
+                                                val override = onDisplayOptionsClick
+                                                if (override != null) {
+                                                    override()
+                                                } else {
+                                                    showDisplayOptionsSheet = true
+                                                }
                                             },
                                         )
 

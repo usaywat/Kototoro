@@ -4,9 +4,11 @@ import android.content.Context
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -42,6 +44,71 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.sync.Semaphore
 
+private data class ContentSourceResolutionSnapshot(
+    val mihonChanges: Int,
+    val aniyomiChanges: Int,
+    val ireaderChanges: Int,
+    val tsundokuChanges: Int,
+    val jsonSources: Map<String, ContentSource>,
+    /** sourceKey -> display name for sources whose extension is gone (e.g. imported backups). */
+    val originNames: Map<String, String> = emptyMap(),
+)
+
+private val LocalContentSourceResolutionSnapshot =
+    staticCompositionLocalOf<ContentSourceResolutionSnapshot?> { null }
+
+/**
+ * Collects extension and JSON-source changes once for a themed Compose hierarchy.
+ * Individual cards only read this snapshot instead of starting their own collectors.
+ */
+@Composable
+fun ContentSourceResolutionProvider(content: @Composable () -> Unit) {
+    val context = LocalContext.current
+    val entryPoint = remember(context.applicationContext) {
+        EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            BaseApp.BaseAppEntryPoint::class.java,
+        )
+    }
+    val mihonChanges by entryPoint.mihonExtensionManager().changes.collectAsStateWithLifecycle()
+    val aniyomiChanges by entryPoint.aniyomiExtensionManager().changes.collectAsStateWithLifecycle()
+    val ireaderChanges by entryPoint.ireaderExtensionManager().changes.collectAsStateWithLifecycle()
+    val tsundokuChanges by entryPoint.tsundokuExtensionManager().changes.collectAsStateWithLifecycle()
+    val jsonSourceEntities by entryPoint.jsonSourceManager()
+        .observeAllJsonSources()
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val jsonSources = remember(jsonSourceEntities) {
+        jsonSourceEntities.associate { entity -> entity.id to JsonContentSource(entity) }
+    }
+    val originNames by entryPoint.database().get()
+        .getSourceOriginsDao()
+        .observeAll()
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val originNamesMap = remember(originNames) {
+        originNames.mapNotNull { origin ->
+            origin.displayName?.takeIf { it.isNotBlank() }?.let { origin.sourceKey to it }
+        }.toMap()
+    }
+    val snapshot = remember(
+        mihonChanges,
+        aniyomiChanges,
+        ireaderChanges,
+        tsundokuChanges,
+        jsonSources,
+        originNamesMap,
+    ) {
+        ContentSourceResolutionSnapshot(
+            mihonChanges = mihonChanges,
+            aniyomiChanges = aniyomiChanges,
+            ireaderChanges = ireaderChanges,
+            tsundokuChanges = tsundokuChanges,
+            jsonSources = jsonSources,
+            originNames = originNamesMap,
+        )
+    }
+    CompositionLocalProvider(LocalContentSourceResolutionSnapshot provides snapshot, content = content)
+}
+
 data class ContentSourceChipMeta(
     val iconRes: Int,
     val text: String,
@@ -57,24 +124,25 @@ fun rememberResolvedContentSource(source: ContentSource): ContentSource {
         return source
     }
     val context = LocalContext.current
+    val sharedSnapshot = LocalContentSourceResolutionSnapshot.current
     val entryPoint = remember(context) {
         EntryPointAccessors.fromApplication(
             context.applicationContext,
             BaseApp.BaseAppEntryPoint::class.java,
         )
     }
-    val mihonChanges by entryPoint.mihonExtensionManager().changes.collectAsStateWithLifecycle()
-    val aniyomiChanges by entryPoint.aniyomiExtensionManager().changes.collectAsStateWithLifecycle()
-    val ireaderChanges by entryPoint.ireaderExtensionManager().changes.collectAsStateWithLifecycle()
-    val tsundokuChanges by entryPoint.tsundokuExtensionManager().changes.collectAsStateWithLifecycle()
+    val mihonChanges = sharedSnapshot?.mihonChanges
+        ?: entryPoint.mihonExtensionManager().changes.value
+    val aniyomiChanges = sharedSnapshot?.aniyomiChanges
+        ?: entryPoint.aniyomiExtensionManager().changes.value
+    val ireaderChanges = sharedSnapshot?.ireaderChanges
+        ?: entryPoint.ireaderExtensionManager().changes.value
+    val tsundokuChanges = sharedSnapshot?.tsundokuChanges
+        ?: entryPoint.tsundokuExtensionManager().changes.value
     val jsonKey = remember(name) {
         name.takeIf { it.startsWith("JSON_") }
     }
-    val resolvedJsonSource by androidx.compose.runtime.produceState<ContentSource?>(initialValue = null, key1 = jsonKey) {
-        value = jsonKey?.let { key ->
-            runCatching { entryPoint.jsonSourceManager().getById(key)?.let(::JsonContentSource) }.getOrNull()
-        }
-    }
+    val resolvedJsonSource = jsonKey?.let { key -> sharedSnapshot?.jsonSources?.get(key) }
     return remember(
         name,
         mihonChanges,
@@ -85,10 +153,28 @@ fun rememberResolvedContentSource(source: ContentSource): ContentSource {
         resolvedJsonSource?.javaClass?.name,
     ) {
         when {
-            resolvedJsonSource is JsonContentSource -> resolvedJsonSource ?: source
+            resolvedJsonSource != null -> resolvedJsonSource
             else -> resolveDynamicContentSource(source, entryPoint) ?: source
         }
     }
+}
+
+/**
+ * Display name persisted in `source_origins` for sources whose extension is not
+ * installed (e.g. favorites imported from an external backup). Returns `null` when
+ * the source is not a dynamic-extension key or no origin name is registered.
+ */
+@Composable
+private fun rememberOriginDisplayName(source: ContentSource): String? {
+    val name = source.name
+    if (!name.startsWith("MIHON_") && !name.startsWith("ANIYOMI_") &&
+        !name.startsWith("IREADER_") && !name.startsWith("CLOUDSTREAM_") &&
+        !name.startsWith("TSUNDOKU_")
+    ) {
+        return null
+    }
+    val snapshot = LocalContentSourceResolutionSnapshot.current ?: return null
+    return remember(name, snapshot.originNames) { snapshot.originNames[name] }
 }
 
 @Composable
@@ -101,12 +187,17 @@ fun rememberResolvedSourceTitle(source: ContentSource): String {
         )
     }
     val resolvedSource = rememberResolvedContentSource(source)
-    return remember(source.name, resolvedSource.javaClass.name) {
-        resolveSourceTitleForUi(
-            context = context,
-            source = resolvedSource,
-            entryPoint = entryPoint,
-        )
+    val originName = rememberOriginDisplayName(source)
+    val unresolved = resolvedSource === source
+    return remember(source.name, resolvedSource.javaClass.name, originName, unresolved) {
+        when {
+            unresolved && originName != null -> originName
+            else -> resolveSourceTitleForUi(
+                context = context,
+                source = resolvedSource,
+                entryPoint = entryPoint,
+            )
+        }
     }
 }
 
@@ -114,15 +205,20 @@ fun rememberResolvedSourceTitle(source: ContentSource): String {
 fun rememberSourceChipMeta(source: ContentSource): ContentSourceChipMeta? {
     val context = LocalContext.current
     val resolvedSource = rememberResolvedContentSource(source)
-    return remember(source.name, resolvedSource.javaClass.name, resolvedSource.locale) {
+    val originName = rememberOriginDisplayName(source)
+    val unresolved = resolvedSource === source
+    return remember(source.name, resolvedSource.javaClass.name, resolvedSource.locale, originName, unresolved) {
         val locale = resolvedSource.getLocale()
             ?.language
             ?.takeIf { it.isNotBlank() }
             ?.uppercase(Locale.ROOT)
             .orEmpty()
-        val origin = resolvedSource.getOriginLabel(context)
-            ?: source.getOriginLabel(context)
-            .orEmpty()
+        val origin = when {
+            unresolved && originName != null -> originName
+            else -> resolvedSource.getOriginLabel(context)
+                ?: source.getOriginLabel(context)
+                .orEmpty()
+        }
         val text = when {
             locale.isNotBlank() -> locale
             origin.isNotBlank() -> origin

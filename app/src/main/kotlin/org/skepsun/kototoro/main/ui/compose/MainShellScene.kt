@@ -33,10 +33,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import dagger.hilt.android.EntryPointAccessors
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.compose.runtime.State
 import org.skepsun.kototoro.explore.ui.model.BrowseGroupTab
 import org.skepsun.kototoro.explore.ui.compose.KototoroExploreHostRoute
 import org.skepsun.kototoro.explore.ui.compose.ExploreSourceSelectionTopBarState
+import org.skepsun.kototoro.favourites.ui.compose.FavoritesFilterPanelRoute
 import org.skepsun.kototoro.favourites.ui.compose.KototoroFavoritesHostRoute
+import org.skepsun.kototoro.favourites.ui.list.FavouritesListViewModel
 import org.skepsun.kototoro.main.ui.LocalMainChromeController
 import org.skepsun.kototoro.main.ui.MainActivity
 import org.skepsun.kototoro.main.ui.SearchBarFilterCallback
@@ -86,9 +89,12 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import org.skepsun.kototoro.core.BaseApp
 import org.skepsun.kototoro.list.ui.model.ListModel
+import org.skepsun.kototoro.list.ui.compose.SelectionAction
+import org.skepsun.kototoro.list.ui.compose.ContentSelectionControl
 import org.skepsun.kototoro.main.ui.compose.CompactFilterRailOverrideState
 import org.skepsun.kototoro.main.ui.compose.CompactTabsTopBarOverrideState
 import org.skepsun.kototoro.main.ui.compose.CompactTopBarTabItem
+import org.skepsun.kototoro.main.ui.compose.ContentSelectionTopBarOverrideState
 import org.skepsun.kototoro.main.ui.compose.LayeredTopBarOverrideState
 import org.skepsun.kototoro.main.ui.navigation3.MainNavigator
 import org.skepsun.kototoro.main.ui.navigation3.MainNavKey
@@ -106,6 +112,7 @@ import org.skepsun.kototoro.parsers.model.ContentListFilter
 import org.skepsun.kototoro.remotelist.ui.RemoteListViewModel
 import org.skepsun.kototoro.remotelist.ui.ContentListSourceGateViewModel
 import org.skepsun.kototoro.search.ui.compose.AppSearchContentListRoute
+import org.skepsun.kototoro.tracker.ui.feed.model.FeedItem
 import org.skepsun.kototoro.main.ui.compose.selectedFirst
 import org.skepsun.kototoro.space.ui.spaceBoundHiltViewModel
 
@@ -391,6 +398,7 @@ private fun MainShellTopLevelEntryContent(
             contentPadding = contentPadding,
             onExploreSourceSelectionTopBarChanged = onExploreSourceSelectionTopBarChanged,
             navigateToDetailsWithContent = navigateToDetailsWithContent,
+            navigateToDetailsWithOrigin = navigateToDetailsWithOrigin,
         )
         is org.skepsun.kototoro.main.ui.navigation3.ContentListNavKey -> {
             val pendingFilter = remember(key.sourceName) { PendingContentListNavigation.consumeFilter() }
@@ -728,9 +736,23 @@ internal fun FeedTopLevelRouteContent(
     navigateToDetailsWithOrigin: (org.skepsun.kototoro.details.ui.model.DetailsOrigin, String?) -> Unit,
 ) {
     val viewModel = spaceBoundHiltViewModel<org.skepsun.kototoro.tracker.ui.feed.FeedViewModel>("feed")
-    val items by viewModel.content.collectAsStateWithLifecycle()
+    val leadingItems by viewModel.leadingContent.collectAsStateWithLifecycle()
+    val fallbackItems by viewModel.fallbackContent.collectAsStateWithLifecycle()
+    val feedPagingItems = viewModel.pagingContent.collectAsLazyPagingItems()
+    val loadedFeedItems = feedPagingItems.itemSnapshotList.items
+        .filterIsInstance<FeedItem>()
+        .ifEmpty { fallbackItems.filterIsInstance<FeedItem>() }
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val categories by viewModel.categories.collectAsStateWithLifecycle()
+
+    val messageContext = LocalContext.current
+    LaunchedEffect(viewModel.onMessage) {
+        viewModel.onMessage.collect { event ->
+            event?.consume(eventCollector { message ->
+                android.widget.Toast.makeText(messageContext, message, android.widget.Toast.LENGTH_SHORT).show()
+            })
+        }
+    }
     val selectedCategoryId by viewModel.currentCategoryId.collectAsStateWithLifecycle()
     val selectedGroupTab by viewModel.currentGroupTab.collectAsStateWithLifecycle()
     val selectedSourceTags by viewModel.currentSourceTags.collectAsStateWithLifecycle()
@@ -787,13 +809,69 @@ internal fun FeedTopLevelRouteContent(
         }
     }
 
+    var selectedFeedItemIds by rememberSaveable { mutableStateOf(emptySet<Long>()) }
+    val selectedFeedItems = remember(loadedFeedItems, selectedFeedItemIds) {
+        loadedFeedItems.filter { it.id in selectedFeedItemIds }
+    }
+
+    BackHandler(enabled = selectedFeedItemIds.isNotEmpty()) {
+        selectedFeedItemIds = emptySet()
+    }
+
     SideEffect {
-        onExploreSourceSelectionTopBarChanged(
-            RouteScopedTopBarOverrideState(
-                TOP_BAR_OWNER_FEED,
-                null,
-            ),
-        )
+        if (selectedFeedItemIds.isNotEmpty()) {
+            onExploreSourceSelectionTopBarChanged(
+                RouteScopedTopBarOverrideState(
+                    TOP_BAR_OWNER_FEED,
+                    ContentSelectionTopBarOverrideState(
+                        selectedCount = selectedFeedItemIds.size,
+                        isAllNonLocal = selectedFeedItems.none { it.manga.isLocal },
+                        isSingleSelection = selectedFeedItemIds.size == 1,
+                        showRemoveOption = true,
+                        supportedActions = setOf(
+                            SelectionAction.SELECT_ALL,
+                            SelectionAction.REMOVE,
+                            SelectionAction.SHARE,
+                            SelectionAction.FAVOURITE,
+                        ),
+                        includeContextualActions = false,
+                        onClearSelection = { selectedFeedItemIds = emptySet() },
+                        onActionClick = { action ->
+                            when (action) {
+                                SelectionAction.SELECT_ALL -> {
+                                    selectedFeedItemIds = loadedFeedItems
+                                        .mapTo(linkedSetOf()) { it.id }
+                                }
+                                SelectionAction.REMOVE -> {
+                                    viewModel.markAsRead(selectedFeedItemIds)
+                                    selectedFeedItemIds = emptySet()
+                                }
+                                SelectionAction.SHARE -> {
+                                    if (activity != null) {
+                                        ShareHelper(activity).shareContentLinks(
+                                            selectedFeedItems.map { it.manga },
+                                        )
+                                    }
+                                    selectedFeedItemIds = emptySet()
+                                }
+                                SelectionAction.FAVOURITE -> {
+                                    appRouter.showFavoriteDialog(selectedFeedItems.map { it.manga })
+                                    selectedFeedItemIds = emptySet()
+                                }
+                                else -> Unit
+                            }
+                        },
+                    ),
+                ),
+            )
+        } else {
+            onExploreSourceSelectionTopBarChanged(
+                RouteScopedTopBarOverrideState(
+                    TOP_BAR_OWNER_FEED,
+                    null,
+                ),
+            )
+        }
     }
 
     DisposableEffect(Unit) {
@@ -805,30 +883,50 @@ internal fun FeedTopLevelRouteContent(
     CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides animatedVisibilityScope) {
         org.skepsun.kototoro.tracker.ui.feed.compose.FeedScreen(
             contentPadding = contentPadding,
-            items = items,
+            leadingItems = leadingItems,
+            fallbackItems = fallbackItems,
+            pagingItems = feedPagingItems,
             isRefreshing = isRefreshing,
             onRefresh = { viewModel.update() },
-            onLoadMore = { viewModel.requestMoreItems() },
             onFeedItemClick = { item, _ ->
-                viewModel.onItemClick(item)
-                val content = item.toContentWithOverride()
-                val sharedElementKey = contentCoverSharedKey(
-                    item.manga.source.name,
-                    item.imageUrl.orEmpty(),
-                    instanceKey = "feed_${item.id}",
-                )
-                if (item.entityId != null) {
-                    navigateToDetailsWithOrigin(
-                        org.skepsun.kototoro.details.ui.model.DetailsOrigin.EntityGraph(
-                            entityId = item.entityId,
-                            preferredLocalMangaId = item.preferredLocalMangaId ?: content.id,
-                            initialProjectionLocalMangaId = content.id,
-                        ),
-                        sharedElementKey,
-                    )
+                if (selectedFeedItemIds.isNotEmpty()) {
+                    selectedFeedItemIds = if (item.id in selectedFeedItemIds) {
+                        selectedFeedItemIds - item.id
+                    } else {
+                        selectedFeedItemIds + item.id
+                    }
                 } else {
-                    navigateToDetailsWithContent(content, sharedElementKey)
+                    viewModel.onItemClick(item)
+                    val content = item.toContentWithOverride()
+                    val sharedElementKey = contentCoverSharedKey(
+                        item.manga.source.name,
+                        item.imageUrl.orEmpty(),
+                        instanceKey = "feed_${item.id}",
+                    )
+                    if (item.entityId != null) {
+                        navigateToDetailsWithOrigin(
+                            org.skepsun.kototoro.details.ui.model.DetailsOrigin.EntityGraph(
+                                entityId = item.entityId,
+                                preferredLocalMangaId = item.preferredLocalMangaId ?: content.id,
+                                initialProjectionLocalMangaId = content.id,
+                            ),
+                            sharedElementKey,
+                        )
+                    } else {
+                        navigateToDetailsWithContent(content, sharedElementKey)
+                    }
                 }
+            },
+            onFeedItemLongClick = { item ->
+                selectedFeedItemIds = if (item.id in selectedFeedItemIds) {
+                    selectedFeedItemIds - item.id
+                } else {
+                    selectedFeedItemIds + item.id
+                }
+            },
+            onFeedItemContinueReading = { item ->
+                viewModel.onItemClick(item)
+                appRouter.openReader(item.toContentWithOverride())
             },
             onUpdatedContentItemClick = { contentItem, _ ->
                 val content = contentItem.model.toContentWithOverride()
@@ -856,7 +954,9 @@ internal fun FeedTopLevelRouteContent(
             selectedCategoryId = selectedCategoryId,
             onCategorySelected = viewModel::selectCategory,
             onQuickFilterOptionClick = viewModel::toggleFilterOption,
+            selectedItemIds = selectedFeedItemIds,
             showCategoryFilterInline = true,
+            host = viewModel,
         )
     }
 }
@@ -1137,6 +1237,23 @@ internal fun BookmarksTopLevelRouteContent(
     )
 }
 
+internal fun navigateUpdatedEntityDetails(
+    entityId: Long,
+    preferredLocalMangaId: Long?,
+    initialProjectionLocalMangaId: Long,
+    sharedElementKey: String?,
+    navigateToDetailsWithOrigin: (org.skepsun.kototoro.details.ui.model.DetailsOrigin, String?) -> Unit,
+) {
+    navigateToDetailsWithOrigin(
+        org.skepsun.kototoro.details.ui.model.DetailsOrigin.EntityGraph(
+            entityId = entityId,
+            preferredLocalMangaId = preferredLocalMangaId ?: initialProjectionLocalMangaId,
+            initialProjectionLocalMangaId = initialProjectionLocalMangaId,
+        ),
+        sharedElementKey,
+    )
+}
+
 @Composable
 internal fun UpdatedTopLevelRouteContent(
     animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope,
@@ -1144,22 +1261,84 @@ internal fun UpdatedTopLevelRouteContent(
     contentPadding: androidx.compose.foundation.layout.PaddingValues,
     onExploreSourceSelectionTopBarChanged: (TopBarOverrideState?) -> Unit,
     navigateToDetailsWithContent: (Content, String?) -> Unit,
+    navigateToDetailsWithOrigin: (org.skepsun.kototoro.details.ui.model.DetailsOrigin, String?) -> Unit,
 ) {
     val viewModel = spaceBoundHiltViewModel<org.skepsun.kototoro.tracker.ui.updates.UpdatesViewModel>("updated")
     val headerQuickFilter by viewModel.headerQuickFilter.collectAsStateWithLifecycle()
-    var updatedContextualTopBarOverride by remember { mutableStateOf<TopBarOverrideState?>(null) }
+    val context = LocalContext.current
+    val updatedPagingItems = viewModel.pagingContent.collectAsLazyPagingItems()
+    val updatedSnapshotItems = updatedPagingItems.itemSnapshotList.items
+    val updatedSelectedItemIdsState = remember { mutableStateOf(emptySet<Long>()) }
+    var updatedSelectedItemIds by updatedSelectedItemIdsState
+    val updatedSelectedModels = remember(updatedSnapshotItems, updatedSelectedItemIds) {
+        updatedSnapshotItems
+            .filterIsInstance<org.skepsun.kototoro.list.ui.model.ContentListModel>()
+            .filter { it.id in updatedSelectedItemIds }
+    }
 
-    SideEffect {
-        onExploreSourceSelectionTopBarChanged(
-            RouteScopedTopBarOverrideState(
-                TOP_BAR_OWNER_UPDATED,
-                updatedContextualTopBarOverride,
-            ),
-        )
+    BackHandler(enabled = updatedSelectedItemIds.isNotEmpty()) {
+        updatedSelectedItemIds = emptySet()
     }
 
     DisposableEffect(Unit) {
         onDispose {
+            onExploreSourceSelectionTopBarChanged(RouteScopedTopBarOverrideState(TOP_BAR_OWNER_UPDATED, null))
+        }
+    }
+
+    // Updated mirrors History/Feed: selection state lives at the route and is reported
+    // directly to the main chrome (a single pill bar in the top-bar slot). The action
+    // list matches the Feed page exactly (已读移除 / 分享 / 收藏 / 全选).
+    SideEffect {
+        if (updatedSelectedItemIds.isNotEmpty()) {
+            onExploreSourceSelectionTopBarChanged(
+                RouteScopedTopBarOverrideState(
+                    TOP_BAR_OWNER_UPDATED,
+                    ContentSelectionTopBarOverrideState(
+                        selectedCount = updatedSelectedItemIds.size,
+                        isAllNonLocal = updatedSelectedModels.none { it.manga.isLocal },
+                        isSingleSelection = updatedSelectedItemIds.size == 1,
+                        showRemoveOption = true,
+                        supportedActions = setOf(
+                            SelectionAction.SELECT_ALL,
+                            SelectionAction.REMOVE,
+                            SelectionAction.SHARE,
+                            SelectionAction.FAVOURITE,
+                        ),
+                        preferredInlineActions = listOf(
+                            SelectionAction.SELECT_ALL,
+                            SelectionAction.REMOVE,
+                            SelectionAction.SHARE,
+                            SelectionAction.FAVOURITE,
+                        ),
+                        includeContextualActions = false,
+                        onClearSelection = { updatedSelectedItemIds = emptySet() },
+                        onActionClick = { action ->
+                            when (action) {
+                                SelectionAction.SELECT_ALL -> {
+                                    updatedSelectedItemIds = updatedSnapshotItems
+                                        .filterIsInstance<org.skepsun.kototoro.list.ui.model.ContentListModel>()
+                                        .mapTo(linkedSetOf()) { it.id }
+                                }
+                                SelectionAction.REMOVE -> {
+                                    viewModel.remove(updatedSelectedItemIds)
+                                    updatedSelectedItemIds = emptySet()
+                                }
+                                SelectionAction.SHARE -> {
+                                    ShareHelper(context).shareContentLinks(updatedSelectedModels.map { it.manga })
+                                    updatedSelectedItemIds = emptySet()
+                                }
+                                SelectionAction.FAVOURITE -> {
+                                    appRouter.showFavoriteDialog(updatedSelectedModels.map { it.manga })
+                                    updatedSelectedItemIds = emptySet()
+                                }
+                                else -> Unit
+                            }
+                        },
+                    ),
+                ),
+            )
+        } else {
             onExploreSourceSelectionTopBarChanged(RouteScopedTopBarOverrideState(TOP_BAR_OWNER_UPDATED, null))
         }
     }
@@ -1169,14 +1348,29 @@ internal fun UpdatedTopLevelRouteContent(
             viewModel = viewModel,
             contentPadding = contentPadding,
             appRouter = appRouter,
-            onTopBarOverrideChanged = { updatedContextualTopBarOverride = it },
             showRemoveOption = true,
+            // Selection is owned by the route and reported to the main chrome, so the
+            // route must not draw its own inline bar: a same-slot duplicate would be
+            // captured by the chrome glass backdrop and render as artifacts.
+            showInlineSelectionTopBar = false,
+            selectionControl = remember(updatedSelectedItemIdsState) {
+                ContentSelectionControl(updatedSelectedItemIdsState) { updatedSelectedItemIds = it }
+            },
             sharedElementInstanceKey = "main_updated",
             isContentTypeFilterVisible = true,
             isSourceTagFilterVisible = true,
             onRemoveSelection = { ids -> viewModel.remove(ids) },
             onNavigateToDetails = { _, content, sharedKey ->
                 navigateToDetailsWithContent(content, sharedKey)
+            },
+            onNavigateToEntityDetails = { _, content, entityId, preferredLocalMangaId, sharedKey ->
+                navigateUpdatedEntityDetails(
+                    entityId = entityId,
+                    preferredLocalMangaId = preferredLocalMangaId,
+                    initialProjectionLocalMangaId = content.id,
+                    sharedElementKey = sharedKey,
+                    navigateToDetailsWithOrigin = navigateToDetailsWithOrigin,
+                )
             },
             onFilterRailOverrideChanged = {},
             onAddMenuProvider = { _, _, _ ->
@@ -1200,6 +1394,7 @@ internal fun UpdatedTopLevelRouteContent(
             },
             showQuickFilterInline = true,
             quickFilterOverride = headerQuickFilter,
+            retainPagingSnapshotOnDetailsNavigation = true,
         )
     }
 }
@@ -1239,7 +1434,7 @@ internal fun HistoryTopLevelRouteContent(
     val headerQuickFilter by viewModel.headerQuickFilter.collectAsStateWithLifecycle()
     val listMode by viewModel.listMode.collectAsStateWithLifecycle()
     val isStatsEnabled by viewModel.isStatsEnabled.collectAsStateWithLifecycle()
-    val isResumeEnabled by viewModel.isResumeEnabled.collectAsStateWithLifecycle()
+    val statsSummary by viewModel.statsSummary.collectAsStateWithLifecycle()
     val gridScale by viewModel.gridScale.collectAsStateWithLifecycle()
     val selectedGroupTab by viewModel.currentGroupTab.collectAsStateWithLifecycle()
     val selectedSourceTags by viewModel.currentSourceTags.collectAsStateWithLifecycle()
@@ -1343,14 +1538,6 @@ internal fun HistoryTopLevelRouteContent(
         }
     }
 
-    LaunchedEffect(viewModel.onOpenReader, appRouter) {
-        viewModel.onOpenReader.collect { event ->
-            event?.consume { content ->
-                appRouter.openReader(content)
-            }
-        }
-    }
-
     LaunchedEffect(viewModel.onActionDone) {
         val observer = org.skepsun.kototoro.core.ui.util.ReversibleActionObserver(rootView)
         viewModel.onActionDone.collect { event ->
@@ -1406,6 +1593,7 @@ internal fun HistoryTopLevelRouteContent(
             isStatsEnabled = isStatsEnabled,
             gridScale = gridScale,
             selectedItemsIds = selectedItemsIds,
+            viewModel = viewModel,
             onRefresh = { viewModel.onRefresh() },
             onLoadMore = { viewModel.requestMoreItems() },
             onPrepareItemTransition = { _, _ -> },
@@ -1469,11 +1657,10 @@ internal fun HistoryTopLevelRouteContent(
                 }
             },
             onStatsClick = { appRouter.openStatistic() },
-            onContinueReadingClick = { viewModel.openLastReader() },
             onQuickFilterOptionClick = viewModel::toggleFilterOption,
-            showContinueReadingButton = isResumeEnabled,
             showQuickFilterInline = true,
             showInlineSelectionTopBar = false,
+            statsSummary = statsSummary,
         )
 
         if (showClearDialog) {
@@ -1551,6 +1738,10 @@ internal fun FavoritesTopLevelRouteContent(
     val selectedGroupTab by viewModel.currentGroupTab.collectAsStateWithLifecycle()
     val selectedSourceTags by viewModel.globalFavoritesState.selectedSourceTags.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    // The active category's list view model is created by the pager page inside
+    // KototoroFavoritesHostRoute; this shell-owned ref lets this scene's filter callback
+    // build the popup filter panel against the same instance.
+    val activeFavouritesViewModelRef = remember { mutableStateOf<FavouritesListViewModel?>(null) }
     var nextFavoritesDialogId by remember { mutableLongStateOf(0L) }
     var pendingFavoritesDialog by remember { mutableStateOf<PendingFavoritesDialog?>(null) }
     var favoritesSelectionDialog by remember { mutableStateOf<FavoritesSelectionDialogState?>(null) }
@@ -1802,6 +1993,15 @@ internal fun FavoritesTopLevelRouteContent(
                     }
                 }
             }
+
+            override fun getFilterPanelContent(): (@Composable (close: () -> Unit) -> Unit)? =
+                { close ->
+                    FavoritesFilterPanelRoute(
+                        containerViewModel = viewModel,
+                        activeViewModelRef = activeFavouritesViewModelRef,
+                        close = close,
+                    )
+                }
         }
         mainChromeController?.setActiveFilterCallback(callback)
         onDispose {
@@ -1825,6 +2025,7 @@ internal fun FavoritesTopLevelRouteContent(
                 navigateToDetailsWithOrigin(origin, sharedKey)
             },
             registerFilterCallback = false,
+            activeFavouritesViewModelRef = activeFavouritesViewModelRef,
             onTopBarOverrideChanged = {
                 onExploreSourceSelectionTopBarChanged(
                     RouteScopedTopBarOverrideState(TOP_BAR_OWNER_FAVORITES, it),

@@ -6,9 +6,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import androidx.annotation.CheckResult
 import androidx.core.app.NotificationCompat
+import androidx.core.app.PendingIntentCompat
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
@@ -20,12 +22,14 @@ import org.skepsun.kototoro.backups.external.ExternalBackupImportSummary
 import org.skepsun.kototoro.backups.external.ExternalBackupRepository
 import org.skepsun.kototoro.backups.ui.BaseBackupRestoreService
 import org.skepsun.kototoro.core.nav.AppRouter
+import org.skepsun.kototoro.core.prefs.AppSettings
 import org.skepsun.kototoro.core.util.CompositeResult
 import org.skepsun.kototoro.core.util.ext.getSerializableExtraCompat
 import org.skepsun.kototoro.core.util.ext.powerManager
 import org.skepsun.kototoro.core.util.ext.printStackTraceDebug
 import org.skepsun.kototoro.core.util.ext.toUriOrNull
 import org.skepsun.kototoro.core.util.ext.withPartialWakeLock
+import org.skepsun.kototoro.entitygraph.data.EntityGraphRepository
 import java.io.FileNotFoundException
 import javax.inject.Inject
 import androidx.appcompat.R as appcompatR
@@ -43,6 +47,12 @@ class ExternalBackupImportService : BaseBackupRestoreService() {
     @Inject
     lateinit var repository: ExternalBackupRepository
 
+    @Inject
+    lateinit var entityGraphRepository: EntityGraphRepository
+
+    @Inject
+    lateinit var settings: AppSettings
+
     override suspend fun IntentJobContext.processIntent(intent: Intent) {
         val notification = buildNotification()
         setForeground(
@@ -57,12 +67,33 @@ class ExternalBackupImportService : BaseBackupRestoreService() {
         powerManager.withPartialWakeLock(TAG) {
             val result = runCatching {
                 val payload = withContext(Dispatchers.IO) { decoder.decode(source, app) }
-                repository.import(payload)
+                val summary = repository.import(payload)
+                // Phase 2: consolidate provisional import entities (merge duplicate works
+                // across sources) before reporting completion, so the reported state is final.
+                val consolidation = runCatching { entityGraphRepository.consolidateImportProvisionalEntities() }
+                val consolidationPending = consolidation.isFailure
+                consolidation.onFailure { e ->
+                        // 不能只 printStackTraceDebug：合并没跑完，库里就长期留着同一部作品的多个
+                        // WORK 实体，用户在收藏/分类里看到的是重复项（issue #510）。
+                        // 记成待办交给下次启动维护重试，并让导入结果明确不报「全部成功」。
+                        Log.e(TAG, "Provisional entity consolidation failed; duplicate works may remain", e)
+                        settings.isEntityConsolidationPending = true
+                    }
+                consolidation.onSuccess { settings.isEntityConsolidationPending = false }
+                summary.copy(consolidationPending = consolidationPending)
             }
             result.fold(
                 onSuccess = { summary ->
-                    withContext(Dispatchers.Main) {
-                        showImportSummaryToast(summary)
+                    // Prefer a foreground summary dialog; fall back to toast + notification
+                    // when the app is backgrounded (Android blocks background activity starts).
+                    val dialogShown = ExternalImportResultActivity.startIfAppInForeground(
+                        this@ExternalBackupImportService,
+                        summary,
+                    )
+                    if (!dialogShown) {
+                        withContext(Dispatchers.Main) {
+                            showImportSummaryToast(summary)
+                        }
                     }
                     showExternalImportResultNotification(source, summary)
                 },
@@ -111,6 +142,9 @@ class ExternalBackupImportService : BaseBackupRestoreService() {
             if (summary.missingSourceNames.isNotEmpty()) {
                 append(". Install kototoro-parsers or kotatsu-parsers-redo")
             }
+            if (summary.consolidationPending) {
+                append(". ").append(getString(R.string.external_import_result_consolidation_pending))
+            }
         }
         Toast.makeText(this, text, Toast.LENGTH_LONG).show()
     }
@@ -119,7 +153,7 @@ class ExternalBackupImportService : BaseBackupRestoreService() {
         source: Uri,
         summary: ExternalBackupImportSummary,
     ) {
-        if (summary.failedCount == 0) {
+        if (summary.failedCount == 0 && !summary.consolidationPending) {
             showResultNotification(source, CompositeResult.success())
             return
         }
@@ -143,16 +177,48 @@ class ExternalBackupImportService : BaseBackupRestoreService() {
         } else {
             ""
         }
+        val uninstalledText = if (summary.uninstalledSources.isNotEmpty()) {
+            "\nNot installed: " + summary.uninstalledSources.joinToString(", ") { source ->
+                (source.displayName ?: source.sourceKey) + " (" + source.recordCount + ")"
+            }
+        } else {
+            ""
+        }
+        val consolidationText = if (summary.consolidationPending) {
+            "\n" + getString(R.string.external_import_result_consolidation_pending)
+        } else {
+            ""
+        }
+        val failedHeadline = if (summary.failedCount > 0) {
+            "Failed ${summary.failedCount} unmatched titles."
+        } else {
+            ""
+        }
         val message = "Imported ${summary.favoritesImported} favorites and ${summary.historyImported} history. " +
-            "Failed ${summary.failedCount} unmatched titles.$missingSourceText\n$failedText"
+            "$failedHeadline$missingSourceText$uninstalledText$consolidationText\n$failedText"
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setContentTitle(getString(R.string.import_backup_from_other_apps))
-            .setContentText("Imported with ${summary.failedCount} unmatched titles")
+            .setContentText(
+                if (summary.failedCount > 0) {
+                    "Imported with ${summary.failedCount} unmatched titles"
+                } else {
+                    getString(R.string.external_import_result_consolidation_pending)
+                },
+            )
             .setSmallIcon(R.drawable.ic_stat_done)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setDefaults(0)
             .setSilent(true)
             .setAutoCancel(true)
+            .setContentIntent(
+                PendingIntentCompat.getActivity(
+                    applicationContext,
+                    0,
+                    ExternalImportResultActivity.createIntent(applicationContext, summary),
+                    0,
+                    false,
+                ),
+            )
             .setBigText(getString(R.string.import_backup_from_other_apps), message)
             .build()
         notificationManager.notify(notificationTag, startId, notification)

@@ -1185,6 +1185,19 @@ class AppRouter(
         }
     }
 
+    /** Paged display-options sheet for the three home rails (history/updates/recommendations). */
+    fun showHomeSectionsConfigSheet() {
+        val composeActivity = activity as? BaseComposeActivity
+        if (composeActivity != null) {
+            composeActivity.showComposeModal {
+                org.skepsun.kototoro.home.ui.compose.HomeSectionsConfigRoute(
+                    onDismissRequest = composeActivity::dismissComposeModal,
+                )
+            }
+            return
+        }
+    }
+
     fun showStatisticSheet(manga: Content) {
         val composeActivity = activity as? BaseComposeActivity
         if (composeActivity != null) {
@@ -1218,6 +1231,13 @@ class AppRouter(
                             composeActivity.getString(R.string.operation_not_supported),
                         )
                     }
+                },
+                onStartSystemInstall = { intent ->
+                    (composeActivity as? SystemInstallLauncherHost)?.launchSystemInstall(intent)
+                },
+                onOpenExtensionManagement = {
+                    composeActivity.dismissComposeModal(WELCOME_MODAL_KEY)
+                    openManageSources()
                 },
             )
         }

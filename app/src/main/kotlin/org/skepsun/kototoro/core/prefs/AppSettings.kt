@@ -270,6 +270,17 @@ class AppSettings @Inject constructor(@ApplicationContext private val context: C
         get() = prefs.getBoolean("has_seen_plugin_welcome", false)
         set(value) = prefs.edit { putBoolean("has_seen_plugin_welcome", value) }
 
+    /**
+     * 外部备份导入后的「同名作品实体合并」失败过、尚未成功重跑。
+     *
+     * 该失败此前被静默吞掉（issue #510）：库里会长期留着同一部作品的多个 WORK 实体，
+     * 表现为「收藏/分类里同一部漫画重复出现、且出现在不同分类」。
+     * 由 LocalStorageCleanupWorker 在下次启动维护时重试。
+     */
+    var isEntityConsolidationPending: Boolean
+        get() = prefs.getBoolean(KEY_PENDING_ENTITY_CONSOLIDATION, false)
+        set(value) = prefs.edit { putBoolean(KEY_PENDING_ENTITY_CONSOLIDATION, value) }
+
     var listMode: ListMode
         get() = prefs.getEnumValue(KEY_LIST_MODE, ListMode.GRID)
         set(value) = prefs.edit { putEnumValue(KEY_LIST_MODE, value) }
@@ -281,6 +292,47 @@ class AppSettings @Inject constructor(@ApplicationContext private val context: C
     var homeListMode: ListMode
         get() = prefs.getEnumValue(KEY_LIST_MODE_HOME, ListMode.DETAILED_LIST)
         set(value) = prefs.edit { putEnumValue(KEY_LIST_MODE_HOME, value) }
+
+    // Per-section display styles for the home rails. Defaults mirror the
+    // reference home design: compact grid for history, list for updates and
+    // grid for recommendations. Until the user overrides a section's grid size
+    // it follows the global grid size.
+    var homeSectionListModeHistory: ListMode
+        get() = prefs.getEnumValue(KEY_HOME_SECTION_LIST_MODE_HISTORY, ListMode.COMPACT_GRID)
+        set(value) = prefs.edit { putEnumValue(KEY_HOME_SECTION_LIST_MODE_HISTORY, value) }
+
+    var homeSectionListModeUpdates: ListMode
+        get() = prefs.getEnumValue(KEY_HOME_SECTION_LIST_MODE_UPDATES, ListMode.LIST)
+        set(value) = prefs.edit { putEnumValue(KEY_HOME_SECTION_LIST_MODE_UPDATES, value) }
+
+    var homeSectionListModeRecommendations: ListMode
+        get() = prefs.getEnumValue(KEY_HOME_SECTION_LIST_MODE_RECOMMENDATIONS, ListMode.GRID)
+        set(value) = prefs.edit { putEnumValue(KEY_HOME_SECTION_LIST_MODE_RECOMMENDATIONS, value) }
+
+    var homeSectionGridSizeHistory: Int
+        get() = prefs.getSafeInt(KEY_HOME_SECTION_GRID_SIZE_HISTORY, gridSize).coerceIn(50, 150)
+        set(value) = prefs.edit { putInt(KEY_HOME_SECTION_GRID_SIZE_HISTORY, value.coerceIn(50, 150)) }
+
+    var homeSectionGridSizeUpdates: Int
+        get() = prefs.getSafeInt(KEY_HOME_SECTION_GRID_SIZE_UPDATES, gridSize).coerceIn(50, 150)
+        set(value) = prefs.edit { putInt(KEY_HOME_SECTION_GRID_SIZE_UPDATES, value.coerceIn(50, 150)) }
+
+    var homeSectionGridSizeRecommendations: Int
+        get() = prefs.getSafeInt(KEY_HOME_SECTION_GRID_SIZE_RECOMMENDATIONS, gridSize).coerceIn(50, 150)
+        set(value) = prefs.edit { putInt(KEY_HOME_SECTION_GRID_SIZE_RECOMMENDATIONS, value.coerceIn(50, 150)) }
+
+    /** Rows per list-mode rail page (1..3); only meaningful for LIST modes. */
+    var homeSectionRailRowsHistory: Int
+        get() = prefs.getSafeInt(KEY_HOME_SECTION_RAIL_ROWS_HISTORY, 2).coerceIn(1, 3)
+        set(value) = prefs.edit { putInt(KEY_HOME_SECTION_RAIL_ROWS_HISTORY, value.coerceIn(1, 3)) }
+
+    var homeSectionRailRowsUpdates: Int
+        get() = prefs.getSafeInt(KEY_HOME_SECTION_RAIL_ROWS_UPDATES, 2).coerceIn(1, 3)
+        set(value) = prefs.edit { putInt(KEY_HOME_SECTION_RAIL_ROWS_UPDATES, value.coerceIn(1, 3)) }
+
+    var homeSectionRailRowsRecommendations: Int
+        get() = prefs.getSafeInt(KEY_HOME_SECTION_RAIL_ROWS_RECOMMENDATIONS, 2).coerceIn(1, 3)
+        set(value) = prefs.edit { putInt(KEY_HOME_SECTION_RAIL_ROWS_RECOMMENDATIONS, value.coerceIn(1, 3)) }
 
     var homeHeroStyle: HomeHeroStyle
         get() = prefs.getEnumValue(KEY_HOME_HERO_STYLE, HomeHeroStyle.CLASSIC)
@@ -422,6 +474,15 @@ class AppSettings @Inject constructor(@ApplicationContext private val context: C
             return prefs.getBoolean(KEY_NAV_FULL_WIDTH, false)
         }
         set(value) = prefs.edit { putBoolean(KEY_NAV_FULL_WIDTH, value) }
+
+    /**
+     * Whether the selected floating navigation item is wrapped by a capsule/pill
+     * background. When off, selection is communicated only through the accent
+     * content color (icon/label) without any capsule.
+     */
+    var isNavCapsuleEnabled: Boolean
+        get() = prefs.getBoolean(KEY_NAV_CAPSULE, true)
+        set(value) = prefs.edit { putBoolean(KEY_NAV_CAPSULE, value) }
 
     /** Tint selected nav content with the sample's accent blue instead of the theme accent. */
     var isSampleBlueNavAccentEnabled: Boolean
@@ -739,25 +800,34 @@ class AppSettings @Inject constructor(@ApplicationContext private val context: C
         set(value) = prefs.edit { putString(KEY_HUGGINGFACE_MIRROR, value.value) }
 
     enum class BangumiMirror(val value: String) {
-        BANGUMI_LOL("bangumi_lol"),
         NATIVE("native"),
+        // Stored key kept as "bangumi_lol" for compatibility; the mirror now points to bangumi.pro.
+        BANGUMI_LOL("bangumi_lol"),
         CUSTOM("custom");
 
         companion object {
             fun fromValue(value: String?): BangumiMirror = when (value) {
                 "bangumi_one", "bgmmi_anibt" -> BANGUMI_LOL
-                else -> entries.find { it.value == value } ?: BANGUMI_LOL
+                else -> entries.find { it.value == value } ?: NATIVE
             }
         }
     }
 
     var bangumiMirror: BangumiMirror
-        get() = BangumiMirror.fromValue(prefs.getString(KEY_BANGUMI_MIRROR, BangumiMirror.BANGUMI_LOL.value))
+        get() = BangumiMirror.fromValue(prefs.getString(KEY_BANGUMI_MIRROR, BangumiMirror.NATIVE.value))
         set(value) = prefs.edit { putString(KEY_BANGUMI_MIRROR, value.value) }
 
     var bangumiMirrorCustomBase: String?
         get() = prefs.getString(KEY_BANGUMI_MIRROR_CUSTOM_BASE, null)
         set(value) = prefs.edit { putString(KEY_BANGUMI_MIRROR_CUSTOM_BASE, value?.trim()?.takeIf { it.isNotBlank() }) }
+
+    /**
+     * Optional custom Bangumi mirror API base URL. When blank, the API host is inferred
+     * from [bangumiMirrorCustomBase] (e.g. `api.<host>`).
+     */
+    var bangumiMirrorCustomApiBase: String?
+        get() = prefs.getString(KEY_BANGUMI_MIRROR_CUSTOM_API_BASE, null)
+        set(value) = prefs.edit { putString(KEY_BANGUMI_MIRROR_CUSTOM_API_BASE, value?.trim()?.takeIf { it.isNotBlank() }) }
 
     var extensionLanguages: Set<String>
         get() = prefs.getStringSet(KEY_EXTENSION_LANGUAGES, null) ?: emptySet()
@@ -1984,6 +2054,14 @@ class AppSettings @Inject constructor(@ApplicationContext private val context: C
     val isReaderChapterToastEnabled: Boolean
         get() = prefs.getBoolean(KEY_READER_CHAPTER_TOAST, true)
 
+    /**
+     * 章节标题（作品名 + 章节名）放在底部进度条上方，而不是顶部栏中间。
+     * 顶部那颗标题药丸只有「看」的作用，单手够不到；想要它顺手就打开这个（issue #509）。
+     */
+    var isReaderChapterTitleAtBottom: Boolean
+        get() = prefs.getBoolean(KEY_READER_CHAPTER_TITLE_BOTTOM, false)
+        set(value) = prefs.edit { putBoolean(KEY_READER_CHAPTER_TITLE_BOTTOM, value) }
+
     var isReaderSuperResolutionEnabled: Boolean
         get() = prefs.getBoolean(KEY_READER_SUPER_RESOLUTION_ENABLED, false)
         set(value) = prefs.edit().putBoolean(KEY_READER_SUPER_RESOLUTION_ENABLED, value).apply()
@@ -2335,7 +2413,7 @@ class AppSettings @Inject constructor(@ApplicationContext private val context: C
         set(value) = prefs.edit { putBoolean(KEY_PAGES_SAVE_ASK, value) }
 
     var isStatsEnabled: Boolean
-        get() = prefs.getBoolean(KEY_STATS_ENABLED, false)
+        get() = prefs.getBoolean(KEY_STATS_ENABLED, true)
         set(value) = prefs.edit { putBoolean(KEY_STATS_ENABLED, value) }
 
     val isAutoLocalChaptersCleanupEnabled: Boolean
@@ -2447,6 +2525,7 @@ class AppSettings @Inject constructor(@ApplicationContext private val context: C
             putBoolean(KEY_NAV_LABELS_ALWAYS_VISIBLE, isNavLabelsAlwaysVisible)
             putEnumValue(KEY_NAV_INDICATOR_STYLE, navIndicatorStyle)
             putBoolean(KEY_NAV_FULL_WIDTH, isNavFullWidth)
+            putBoolean(KEY_NAV_CAPSULE, isNavCapsuleEnabled)
             putBoolean(KEY_NAV_ACCENT_SAMPLE_BLUE, isSampleBlueNavAccentEnabled)
             putInt(KEY_GRID_SIZE, gridSize)
             putInt(KEY_GRID_SIZE_PAGES, gridSizePages)
@@ -2630,6 +2709,15 @@ class AppSettings @Inject constructor(@ApplicationContext private val context: C
         const val KEY_LIST_MODE = "list_mode_2"
         const val KEY_LIST_MODE_BROWSE = "list_mode_browse"
         const val KEY_LIST_MODE_HOME = "list_mode_home"
+        const val KEY_HOME_SECTION_LIST_MODE_HISTORY = "home_section_list_mode_history"
+        const val KEY_HOME_SECTION_LIST_MODE_UPDATES = "home_section_list_mode_updates"
+        const val KEY_HOME_SECTION_LIST_MODE_RECOMMENDATIONS = "home_section_list_mode_recommendations"
+        const val KEY_HOME_SECTION_GRID_SIZE_HISTORY = "home_section_grid_size_history"
+        const val KEY_HOME_SECTION_GRID_SIZE_UPDATES = "home_section_grid_size_updates"
+        const val KEY_HOME_SECTION_GRID_SIZE_RECOMMENDATIONS = "home_section_grid_size_recommendations"
+        const val KEY_HOME_SECTION_RAIL_ROWS_HISTORY = "home_section_rail_rows_history"
+        const val KEY_HOME_SECTION_RAIL_ROWS_UPDATES = "home_section_rail_rows_updates"
+        const val KEY_HOME_SECTION_RAIL_ROWS_RECOMMENDATIONS = "home_section_rail_rows_recommendations"
         const val KEY_HOME_HERO_STYLE = "home_hero_style"
         const val KEY_HOME_HERO_MODE = "home_hero_mode"
         const val KEY_HOME_HERO_BACKGROUND = "home_hero_background"
@@ -2662,6 +2750,7 @@ class AppSettings @Inject constructor(@ApplicationContext private val context: C
         const val KEY_COOKIES_CLEAR = "cookies_clear"
         const val KEY_CHAPTERS_CLEAR = "chapters_clear"
         const val KEY_CHAPTERS_CLEAR_AUTO = "chapters_clear_auto"
+        const val KEY_PENDING_ENTITY_CONSOLIDATION = "pending_entity_consolidation"
         const val KEY_THUMBS_CACHE_CLEAR = "thumbs_cache_clear"
         const val KEY_LOCAL_MANGA_CLEAR = "local_manga_clear"
         const val KEY_LOCAL_NOVELS_CLEAR = "local_novels_clear"
@@ -2854,6 +2943,7 @@ class AppSettings @Inject constructor(@ApplicationContext private val context: C
         const val KEY_READER_BAR_LAYOUT = "reader_bar_layout"
         const val KEY_READER_BAR_CUTOUT_AVOIDANCE = "reader_bar_cutout_avoidance"
         const val KEY_READER_CHAPTER_TOAST = "reader_chapter_toast"
+        const val KEY_READER_CHAPTER_TITLE_BOTTOM = "reader_chapter_title_bottom"
         const val KEY_READER_SUPER_RESOLUTION_ENABLED = "reader_super_resolution_enabled"
         const val KEY_READER_SUPER_RESOLUTION_ENGINE = "reader_super_resolution_engine"
         const val KEY_READER_SUPER_RESOLUTION_ANIME4K_MODE = "reader_super_resolution_anime4k_mode"
@@ -2949,6 +3039,7 @@ class AppSettings @Inject constructor(@ApplicationContext private val context: C
         const val KEY_HUGGINGFACE_MIRROR = "huggingface_mirror"
         const val KEY_BANGUMI_MIRROR = "bangumi_mirror"
         const val KEY_BANGUMI_MIRROR_CUSTOM_BASE = "bangumi_mirror_custom_base"
+        const val KEY_BANGUMI_MIRROR_CUSTOM_API_BASE = "bangumi_mirror_custom_api_base"
         const val KEY_LNREADER_REPOS = "lnreader_repository_urls"
         const val KEY_LEGADO_REPOS = "legado_repository_urls"
         const val KEY_TVBOX_REPOS = "tvbox_repository_urls"
@@ -2993,6 +3084,7 @@ class AppSettings @Inject constructor(@ApplicationContext private val context: C
         const val KEY_NAV_INDICATOR_STYLE = "nav_indicator_style"
         const val KEY_NAV_FULL_WIDTH = "nav_full_width"
         const val KEY_NAV_INDICATOR_FULL_WIDTH = "nav_indicator_full_width"
+        const val KEY_NAV_CAPSULE = "nav_capsule"
         const val KEY_NAV_HEIGHT = "nav_height"
         const val KEY_NAV_FLOATING_HEIGHT = "nav_floating_height"
         const val KEY_MAIN_FAB = "main_fab"

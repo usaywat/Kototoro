@@ -1,5 +1,6 @@
 package org.skepsun.kototoro.main.ui.compose
 
+import androidx.compose.runtime.Composable
 import kotlinx.coroutines.flow.StateFlow
 import org.skepsun.kototoro.core.jsonsource.SourceType
 import org.skepsun.kototoro.core.prefs.AppSettings
@@ -63,6 +64,8 @@ data class MainAppState(
     val onDeleteQuery: (String) -> Unit = {},
     val onVoiceInput: () -> Unit = {},
     val onOpenListOptions: () -> Unit = {},
+    /** Opens the home three-section paged display options sheet (home ⋮ menu). */
+    val onHomeDisplayOptionsClick: () -> Unit = {},
     val onSettingsClick: () -> Unit = {},
     val onHelpClick: () -> Unit = {},
     val onSourceSettingsClick: () -> Unit = {},
@@ -87,6 +90,11 @@ data class MainAppState(
     val isSourceTagFilterVisible: Boolean = true,
     val onSourceTagFilterClick: (android.view.View?) -> Boolean = { false },
     val onSourceTagSelected: (SourceTag?) -> Unit = {},
+    /**
+     * Optional page-provided content for the source-tag filter popup (the "content source
+     * type" filter button). When non-null it replaces the default single-tag menu.
+     */
+    val sourceTagCustomMenuContent: (@Composable ((close: () -> Unit) -> Unit))? = null,
     val onTopBarHeightChanged: (Int) -> Unit = {},
     val onBottomNavHeightChanged: (Int) -> Unit = {},
     val onContentInsetsChanged: (Int, Int) -> Unit = { _, _ -> },

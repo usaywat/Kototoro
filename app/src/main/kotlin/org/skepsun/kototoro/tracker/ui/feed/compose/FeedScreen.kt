@@ -5,26 +5,25 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.paging.LoadState
+import androidx.paging.compose.LazyPagingItems
+import androidx.paging.compose.itemContentType
+import androidx.paging.compose.itemKey
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -43,17 +42,21 @@ import androidx.compose.ui.unit.dp
 import org.skepsun.kototoro.R
 import org.skepsun.kototoro.core.model.FavouriteCategory
 import org.skepsun.kototoro.core.prefs.AppSettings
+import org.skepsun.kototoro.core.prefs.ListMode
 import org.skepsun.kototoro.core.prefs.observeAsState
 import org.skepsun.kototoro.core.ui.compose.KototoroLoadingIndicator
 import org.skepsun.kototoro.core.ui.compose.KototoroPullToRefreshBox
 import org.skepsun.kototoro.core.ui.compose.ScrollToTopEffect
-import org.skepsun.kototoro.list.ui.model.ContentListModel
+import org.skepsun.kototoro.list.ui.RetainedPagingSnapshotHost
+import org.skepsun.kototoro.list.ui.compose.rememberRetainedPagingSnapshotState
 import org.skepsun.kototoro.list.domain.ListFilterOption
 import org.skepsun.kototoro.list.ui.model.EmptyState
+import org.skepsun.kototoro.list.ui.model.ErrorState
 import org.skepsun.kototoro.list.ui.model.ListHeader
 import org.skepsun.kototoro.list.ui.model.ListModel
 import org.skepsun.kototoro.list.ui.model.LoadingState
 import org.skepsun.kototoro.list.ui.model.QuickFilter
+import org.skepsun.kototoro.list.ui.model.toErrorState
 import org.skepsun.kototoro.tracker.ui.feed.model.FeedItem
 import org.skepsun.kototoro.tracker.ui.feed.model.UpdatedContentHeader
 import org.skepsun.kototoro.tracker.ui.feed.model.UpdatedContentHeaderItem
@@ -63,10 +66,11 @@ import kotlin.math.abs
 @Composable
 fun FeedScreen(
     contentPadding: PaddingValues = PaddingValues(0.dp),
-    items: List<ListModel>,
+    leadingItems: List<ListModel>,
+    fallbackItems: List<ListModel>,
+    pagingItems: LazyPagingItems<ListModel>,
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
-    onLoadMore: () -> Unit,
     onFeedItemClick: (FeedItem, Rect?) -> Unit,
     onUpdatedContentItemClick: (UpdatedContentHeaderItem, Rect?) -> Unit,
     onUpdatedContentMoreClick: (UpdatedContentHeader) -> Unit,
@@ -74,11 +78,42 @@ fun FeedScreen(
     selectedCategoryId: Long,
     onCategorySelected: (Long) -> Unit,
     onQuickFilterOptionClick: (ListFilterOption) -> Unit,
+    selectedItemIds: Set<Long> = emptySet(),
+    onFeedItemLongClick: (FeedItem) -> Unit = {},
+    onFeedItemContinueReading: (FeedItem) -> Unit = {},
     showCategoryFilterInline: Boolean = true,
+    host: RetainedPagingSnapshotHost? = null,
     modifier: Modifier = Modifier
 ) {
-    val listState = rememberSaveable(saver = LazyListState.Saver) {
+    val pagingRefreshState = pagingItems.loadState.refresh
+    val showFallback = pagingItems.itemCount == 0 && pagingRefreshState is LoadState.NotLoading
+    val liveLeadingItems = if (showFallback) leadingItems + fallbackItems else leadingItems
+    val livePagingItems = pagingItems.takeUnless { showFallback }
+    val retainedState = host?.let { snapshotHost ->
+        rememberRetainedPagingSnapshotState(
+            host = snapshotHost,
+            retainEnabled = true,
+            leadingItems = liveLeadingItems,
+            lazyPagingItems = livePagingItems,
+            listMode = ListMode.LIST,
+            staticRefreshSettled = !isRefreshing && liveLeadingItems.none { it is LoadingState },
+        )
+    }
+    val listState = retainedState?.listState ?: rememberSaveable(saver = LazyListState.Saver) {
         LazyListState()
+    }
+    val displayedItems = retainedState?.displayedItems ?: liveLeadingItems
+    val displayedPagingItems = retainedState?.displayedPagingItems ?: livePagingItems
+    val pagingStatusItem: ListModel? = displayedPagingItems?.let { paging ->
+        when {
+            paging.itemCount == 0 && paging.loadState.refresh is LoadState.Loading -> LoadingState
+            paging.itemCount == 0 && paging.loadState.refresh is LoadState.Error ->
+                (paging.loadState.refresh as LoadState.Error).error.toErrorState()
+            paging.loadState.append is LoadState.Loading -> LoadingState
+            paging.loadState.append is LoadState.Error ->
+                (paging.loadState.append as LoadState.Error).error.toErrorState()
+            else -> null
+        }
     }
     ScrollToTopEffect {
         listState.scrollToItem(0)
@@ -97,25 +132,29 @@ fun FeedScreen(
         )
     }
 
-    // Trigger pagination threshold
-    val shouldLoadMore by remember {
-        derivedStateOf {
-            val layoutInfo = listState.layoutInfo
-            val totalVisibleItems = layoutInfo.visibleItemsInfo.size
-            val lastVisibleItemIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            lastVisibleItemIndex >= layoutInfo.totalItemsCount - 4 && totalVisibleItems > 0
-        }
-    }
-
-    LaunchedEffect(shouldLoadMore) {
-        if (shouldLoadMore && !isRefreshing) {
-            onLoadMore()
-        }
-    }
     val swipeThresholdPx = with(density) { 72.dp.toPx() }
+    val captureNavigationSnapshot: (ListModel) -> Unit = { clickedItem ->
+        retainedState?.let { state ->
+            val pagedItems = displayedPagingItems?.itemSnapshotList?.items
+            val loadedItems = pagedItems ?: displayedItems
+            val pagingAnchorIndex = if (pagedItems == null) {
+                state.listState.firstVisibleItemIndex
+            } else {
+                (state.listState.firstVisibleItemIndex - displayedItems.size).coerceAtLeast(0)
+            }
+            state.captureOnNavigate(
+                clickedItem,
+                loadedItems,
+                state.listState.firstVisibleItemIndex,
+                state.listState.firstVisibleItemScrollOffset,
+                ListMode.LIST,
+                pagingAnchorIndex,
+            )
+        }
+    }
 
     KototoroPullToRefreshBox(
-        isRefreshing = isRefreshing,
+        isRefreshing = isRefreshing || retainedState?.pagingIsRefreshing == true,
         onRefresh = onRefresh,
         modifier = modifier
             .fillMaxSize()
@@ -169,70 +208,179 @@ fun FeedScreen(
             modifier = Modifier.fillMaxSize()
         ) {
 
-            itemsIndexed(
-                items = items,
-                key = { index, item ->
-                    when (item) {
-                        is QuickFilter -> "feed_filters"
-                        is FeedItem -> "feed_${item.id}"
-                        is UpdatedContentHeader -> "updates_header"
-                        is ListHeader -> "header_${item.getText(context)}_$index"
-                        is LoadingState -> "loading"
-                        is EmptyState -> "empty"
-                        else -> item.hashCode().toString()
-                    }
-                },
-                contentType = { _, item ->
-                    when (item) {
-                        is QuickFilter -> "feed_filter"
-                        is FeedItem -> "feed_item"
-                        is UpdatedContentHeader -> "updated_carousel"
-                        is ListHeader -> "list_header"
-                        else -> "feed_other"
-                    }
-                },
-            ) { _, item ->
-                when (item) {
-                    is QuickFilter -> {
-                        if (showCategoryFilterInline) {
-                            org.skepsun.kototoro.list.ui.compose.QuickFilterSection(
-                                quickFilter = item,
-                                onQuickFilterOptionClick = onQuickFilterOptionClick,
-                            )
-                        }
-                    }
-                    is FeedItem -> {
-                        FeedItemCard(
-                            item = item,
-                            onClick = { coverBounds -> onFeedItemClick(item, coverBounds) }
-                        )
-                    }
-                    is UpdatedContentHeader -> {
-                        // Here we render the horizontal carousel of updated contents
-                        UpdatedContentCarousel(
-                            header = item,
-                            prefs = carouselPrefs,
-                            onItemClick = onUpdatedContentItemClick,
-                            onMoreClick = { onUpdatedContentMoreClick(item) }
-                        )
-                    }
-                    is ListHeader -> {
-                        Text(
-                            text = item.getText(context)?.toString().orEmpty(),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 12.dp)
-                        )
-                    }
-                    LoadingState -> {
-                        FeedLoadingState()
-                    }
-                    is EmptyState -> {
-                        FeedEmptyState(item)
-                    }
+            items(
+                items = displayedItems,
+                key = ::feedItemKey,
+                contentType = ::feedItemContentType,
+            ) { item ->
+                FeedListItemContent(
+                    item = item,
+                    carouselPrefs = carouselPrefs,
+                    selectedItemIds = selectedItemIds,
+                    showCategoryFilterInline = showCategoryFilterInline,
+                    onQuickFilterOptionClick = onQuickFilterOptionClick,
+                    onFeedItemClick = onFeedItemClick,
+                    onFeedItemLongClick = onFeedItemLongClick,
+                    onFeedItemContinueReading = onFeedItemContinueReading,
+                    onUpdatedContentItemClick = onUpdatedContentItemClick,
+                    onUpdatedContentMoreClick = onUpdatedContentMoreClick,
+                    onCaptureNavigationSnapshot = captureNavigationSnapshot,
+                    onRetry = pagingItems::retry,
+                )
+            }
+            displayedPagingItems?.let { pagedItems ->
+                items(
+                    count = pagedItems.itemCount,
+                    key = pagedItems.itemKey(::feedItemKey),
+                    contentType = pagedItems.itemContentType(::feedItemContentType),
+                ) { index ->
+                    val item = pagedItems[index] ?: return@items
+                    FeedListItemContent(
+                        item = item,
+                        carouselPrefs = carouselPrefs,
+                        selectedItemIds = selectedItemIds,
+                        showCategoryFilterInline = showCategoryFilterInline,
+                        onQuickFilterOptionClick = onQuickFilterOptionClick,
+                        onFeedItemClick = onFeedItemClick,
+                        onFeedItemLongClick = onFeedItemLongClick,
+                        onFeedItemContinueReading = onFeedItemContinueReading,
+                        onUpdatedContentItemClick = onUpdatedContentItemClick,
+                        onUpdatedContentMoreClick = onUpdatedContentMoreClick,
+                        onCaptureNavigationSnapshot = captureNavigationSnapshot,
+                        onRetry = pagingItems::retry,
+                    )
                 }
+            }
+            pagingStatusItem?.let { statusItem ->
+                item(
+                    key = "feed_paging_status",
+                    contentType = feedItemContentType(statusItem),
+                ) {
+                    FeedListItemContent(
+                        item = statusItem,
+                        carouselPrefs = carouselPrefs,
+                        selectedItemIds = selectedItemIds,
+                        showCategoryFilterInline = showCategoryFilterInline,
+                        onQuickFilterOptionClick = onQuickFilterOptionClick,
+                        onFeedItemClick = onFeedItemClick,
+                        onFeedItemLongClick = onFeedItemLongClick,
+                        onFeedItemContinueReading = onFeedItemContinueReading,
+                        onUpdatedContentItemClick = onUpdatedContentItemClick,
+                        onUpdatedContentMoreClick = onUpdatedContentMoreClick,
+                        onCaptureNavigationSnapshot = captureNavigationSnapshot,
+                        onRetry = pagingItems::retry,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun feedItemKey(item: ListModel): Any = when (item) {
+    is QuickFilter -> "feed_filters"
+    is FeedItem -> "feed_${item.id}"
+    is UpdatedContentHeader -> "updates_header"
+    is ListHeader -> "header_${item.hashCode()}"
+    is LoadingState -> "loading"
+    is EmptyState -> "empty"
+    is ErrorState -> "error"
+    else -> "${item::class.java.name}_${item.hashCode()}"
+}
+
+private fun feedItemContentType(item: ListModel): Any = when (item) {
+    is QuickFilter -> "feed_filter"
+    is FeedItem -> "feed_item"
+    is UpdatedContentHeader -> "updated_carousel"
+    is ListHeader -> "list_header"
+    else -> "feed_other"
+}
+
+@Composable
+private fun FeedListItemContent(
+    item: ListModel,
+    carouselPrefs: UpdatedContentCarouselPrefs,
+    selectedItemIds: Set<Long>,
+    showCategoryFilterInline: Boolean,
+    onQuickFilterOptionClick: (ListFilterOption) -> Unit,
+    onFeedItemClick: (FeedItem, Rect?) -> Unit,
+    onFeedItemLongClick: (FeedItem) -> Unit,
+    onFeedItemContinueReading: (FeedItem) -> Unit,
+    onUpdatedContentItemClick: (UpdatedContentHeaderItem, Rect?) -> Unit,
+    onUpdatedContentMoreClick: (UpdatedContentHeader) -> Unit,
+    onCaptureNavigationSnapshot: (ListModel) -> Unit,
+    onRetry: () -> Unit,
+) {
+    val context = LocalContext.current
+    when (item) {
+        is QuickFilter -> if (showCategoryFilterInline) {
+            org.skepsun.kototoro.list.ui.compose.QuickFilterSection(
+                quickFilter = item,
+                onQuickFilterOptionClick = onQuickFilterOptionClick,
+            )
+        }
+        is FeedItem -> FeedItemCard(
+            item = item,
+            isSelected = item.id in selectedItemIds,
+            onClick = { coverBounds ->
+                onCaptureNavigationSnapshot(item)
+                onFeedItemClick(item, coverBounds)
+            },
+            onLongClick = { onFeedItemLongClick(item) },
+            onContinueReading = if (selectedItemIds.isEmpty()) {
+                { onFeedItemContinueReading(item) }
+            } else {
+                null
+            },
+        )
+        is UpdatedContentHeader -> UpdatedContentCarousel(
+            header = item,
+            prefs = carouselPrefs,
+            onItemClick = { contentItem, coverBounds ->
+                onCaptureNavigationSnapshot(item)
+                onUpdatedContentItemClick(contentItem, coverBounds)
+            },
+            onMoreClick = { onUpdatedContentMoreClick(item) },
+        )
+        is ListHeader -> Text(
+            text = item.getText(context)?.toString().orEmpty(),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+        )
+        LoadingState -> FeedLoadingState()
+        is EmptyState -> FeedEmptyState(item)
+        is ErrorState -> FeedErrorState(item = item, onRetry = onRetry)
+    }
+}
+
+@Composable
+private fun FeedErrorState(
+    item: ErrorState,
+    onRetry: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            painter = painterResource(if (item.icon != 0) item.icon else R.drawable.ic_error_large),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.error,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = item.exception.localizedMessage ?: stringResource(R.string.error_occurred),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (item.canRetry) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(onClick = onRetry) {
+                Text(stringResource(item.buttonText.takeIf { it != 0 } ?: R.string.retry))
             }
         }
     }

@@ -2,6 +2,7 @@ package org.skepsun.kototoro.details.ui.compose
 
 
 import android.text.format.Formatter
+import android.widget.Toast
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -68,6 +69,7 @@ import org.skepsun.kototoro.core.ui.compose.sharedCoverMemoryCacheKey
 import org.skepsun.kototoro.core.ui.compose.AppLayoutTokens
 import org.skepsun.kototoro.core.ui.theme.LocalMaterialExpressiveComponentsEnabled
 import org.skepsun.kototoro.core.ui.theme.isDarkTheme
+import org.skepsun.kototoro.core.util.ext.copyToClipboard
 import org.skepsun.kototoro.core.util.ext.mangaExtra
 import org.skepsun.kototoro.core.util.ext.takeIfUsableImageUri
 import org.skepsun.kototoro.core.util.ext.toLocaleOrNull
@@ -87,6 +89,20 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 internal fun Color.detailsButtonContainerColor(): Color = withDetailsMinAlpha(0.80f)
+
+/**
+ * Bounds on the title/description expansion. Without these, a pathologically long title or
+ * description (some sources return megabyte-long strings) expands to `Int.MAX_VALUE` lines
+ * inside a [CompositingStrategy.Offscreen] layer, which allocates an offscreen buffer
+ * proportional to the whole paragraph — crashing or freezing the details page. Real titles
+ * and descriptions are well below these limits, so the caps are purely defensive. The
+ * Offscreen layer is also only used while collapsed (where the bottom fade needs it): the
+ * layer is what makes the oversized buffer dangerous, so an expanded text never pays for one.
+ */
+private const val COLLAPSED_TITLE_MAX_LINES = 3
+private const val EXPANDED_TITLE_MAX_LINES = 12
+private const val MAX_RENDERED_TITLE_LENGTH = 1_000
+private const val MAX_RENDERED_DESCRIPTION_LENGTH = 4_000
 
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
@@ -149,6 +165,7 @@ fun DetailsHeader(
     val content = mangaDetails?.toContent()
     val originalTitle = content?.title.orEmpty()
     val displayTitle = translatedTitle ?: originalTitle
+    val titleForDisplay = displayTitle.take(MAX_RENDERED_TITLE_LENGTH)
     val displayDescription = translatedDescription ?: mangaDetails?.description?.toString().orEmpty()
     val fallbackDescription = stringResource(R.string.no_description)
     val scrobblingStatuses = stringArrayResource(R.array.scrobbling_statuses)
@@ -265,6 +282,7 @@ fun DetailsHeader(
     var isTitleExpanded by rememberSaveable(displayTitle) { mutableStateOf(false) }
     var canExpandTitle by remember(displayTitle) { mutableStateOf(false) }
     val description = displayDescription.ifBlank { fallbackDescription }
+    val descriptionForDisplay = description.take(MAX_RENDERED_DESCRIPTION_LENGTH)
     val collapsedDescriptionMaxLines = 3
     var canExpandDescription by remember(description) { mutableStateOf(false) }
     val coverModel = remember(content?.source?.name, content?.url, currentCoverUrl) {
@@ -401,7 +419,7 @@ fun DetailsHeader(
             ) {
                 SelectionContainer(modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        text = displayTitle,
+                        text = titleForDisplay,
                         style = MaterialTheme.typography.headlineSmall.copy(
                             fontWeight = FontWeight.SemiBold,
                             lineHeight = 27.sp,
@@ -414,30 +432,35 @@ fun DetailsHeader(
                         modifier = Modifier
                             .fillMaxWidth()
                             .animateContentSize()
-                            .graphicsLayer {
-                                compositingStrategy = CompositingStrategy.Offscreen
-                            }
-                            .drawWithContent {
-                                drawContent()
+                            .then(
                                 if (canExpandTitle && !isTitleExpanded) {
-                                    drawRect(
-                                        brush = Brush.verticalGradient(
-                                            colors = listOf(Color.Black, Color.Transparent),
-                                            startY = size.height * 0.62f,
-                                            endY = size.height,
-                                        ),
-                                        blendMode = BlendMode.DstIn,
-                                    )
-                                }
-                            }
+                                    Modifier
+                                        .graphicsLayer {
+                                            compositingStrategy = CompositingStrategy.Offscreen
+                                        }
+                                        .drawWithContent {
+                                            drawContent()
+                                            drawRect(
+                                                brush = Brush.verticalGradient(
+                                                    colors = listOf(Color.Black, Color.Transparent),
+                                                    startY = size.height * 0.62f,
+                                                    endY = size.height,
+                                                ),
+                                                blendMode = BlendMode.DstIn,
+                                            )
+                                        }
+                                } else {
+                                    Modifier
+                                },
+                            )
                             .clickable(enabled = canExpandTitle) {
                                 isTitleExpanded = !isTitleExpanded
                             },
-                        maxLines = if (isTitleExpanded) Int.MAX_VALUE else 3,
+                        maxLines = if (isTitleExpanded) EXPANDED_TITLE_MAX_LINES else COLLAPSED_TITLE_MAX_LINES,
                         overflow = TextOverflow.Ellipsis,
                         onTextLayout = { textLayoutResult ->
                             val hasCollapsedOverflow = textLayoutResult.hasVisualOverflow ||
-                                textLayoutResult.lineCount > 3
+                                textLayoutResult.lineCount > COLLAPSED_TITLE_MAX_LINES
                             if (canExpandTitle != hasCollapsedOverflow) {
                                 canExpandTitle = hasCollapsedOverflow
                             }
@@ -506,6 +529,16 @@ fun DetailsHeader(
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    DetailsHeaderIconButton(
+                        iconRes = R.drawable.ic_copy,
+                        onClick = {
+                            context.copyToClipboard(displayTitle, displayTitle)
+                            Toast.makeText(context, R.string.details_title_copied, Toast.LENGTH_SHORT).show()
+                        },
+                        contentDescription = stringResource(R.string.details_copy_title),
+                        buttonSize = 32.dp,
+                        iconSize = 17.dp,
+                    )
                     if (showWorkActions) {
                         DetailsHeaderIconButton(
                             iconRes = if (isFavourite) R.drawable.ic_heart else R.drawable.ic_heart_outline,
@@ -627,7 +660,7 @@ fun DetailsHeader(
                 )
                 SelectionContainer {
                     Text(
-                        text = description,
+                        text = descriptionForDisplay,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier
@@ -639,22 +672,27 @@ fun DetailsHeader(
                                 isDescriptionExpanded = !isDescriptionExpanded
                             }
                             .animateContentSize()
-                            .graphicsLayer {
-                                compositingStrategy = CompositingStrategy.Offscreen
-                            }
-                            .drawWithContent {
-                                drawContent()
+                            .then(
                                 if (canExpandDescription && !isDescriptionExpanded) {
-                                    drawRect(
-                                        brush = Brush.verticalGradient(
-                                            colors = listOf(Color.Black, Color.Transparent),
-                                            startY = size.height * 0.62f,
-                                            endY = size.height,
-                                        ),
-                                        blendMode = BlendMode.DstIn,
-                                    )
-                                }
-                            },
+                                    Modifier
+                                        .graphicsLayer {
+                                            compositingStrategy = CompositingStrategy.Offscreen
+                                        }
+                                        .drawWithContent {
+                                            drawContent()
+                                            drawRect(
+                                                brush = Brush.verticalGradient(
+                                                    colors = listOf(Color.Black, Color.Transparent),
+                                                    startY = size.height * 0.62f,
+                                                    endY = size.height,
+                                                ),
+                                                blendMode = BlendMode.DstIn,
+                                            )
+                                        }
+                                } else {
+                                    Modifier
+                                },
+                            ),
                         maxLines = if (isDescriptionExpanded) Int.MAX_VALUE else collapsedDescriptionMaxLines,
                         overflow = TextOverflow.Ellipsis,
                         onTextLayout = { textLayoutResult ->

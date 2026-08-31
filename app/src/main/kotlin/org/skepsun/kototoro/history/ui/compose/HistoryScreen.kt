@@ -1,17 +1,14 @@
 package org.skepsun.kototoro.history.ui.compose
 
 import android.util.Log
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -21,14 +18,15 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import org.skepsun.kototoro.R
 import org.skepsun.kototoro.core.prefs.ListMode
+import org.skepsun.kototoro.core.ui.compose.AppLayoutTokens
 import org.skepsun.kototoro.core.ui.compose.performSelectionHapticFeedback
+import org.skepsun.kototoro.list.ui.ContentListViewModel
 import org.skepsun.kototoro.list.ui.compose.KototoroContentListScreen
 import org.skepsun.kototoro.list.ui.compose.SelectionAction
+import org.skepsun.kototoro.list.ui.compose.rememberRetainedPagingSnapshotState
 import org.skepsun.kototoro.list.ui.model.ContentListModel
 import org.skepsun.kototoro.list.ui.model.ListModel
 import org.skepsun.kototoro.list.ui.model.QuickFilter
@@ -63,11 +61,11 @@ fun HistoryScreen(
     onClearSelection: () -> Unit,
     onSelectionAction: (SelectionAction) -> Unit,
     onStatsClick: () -> Unit,
-    onContinueReadingClick: () -> Unit,
     onQuickFilterOptionClick: (ListFilterOption) -> Unit,
-    showContinueReadingButton: Boolean,
     showQuickFilterInline: Boolean = true,
     showInlineSelectionTopBar: Boolean = true,
+    viewModel: ContentListViewModel? = null,
+    statsSummary: org.skepsun.kototoro.stats.domain.StatsDashboard? = null,
     modifier: Modifier = Modifier,
 ) {
     val hapticFeedback = LocalHapticFeedback.current
@@ -77,13 +75,26 @@ fun HistoryScreen(
     val contentItems = remember(items) {
         items.filterNot { it is QuickFilter }
     }
-    val listState = rememberSaveable(saver = LazyListState.Saver) {
+    // Retained paging snapshot: keep the visible window and realign by anchor item
+    // id across a details-page round trip (details refresh invalidates the Room
+    // paging source while the list is off-screen; a plain index restore then
+    // points at the wrong generation).
+    val retainedState = viewModel?.let { vm ->
+        rememberRetainedPagingSnapshotState(
+            host = vm,
+            retainEnabled = true,
+            leadingItems = contentItems,
+            lazyPagingItems = pagingItems,
+            listMode = listMode,
+        )
+    }
+    val listState = retainedState?.listState ?: rememberSaveable(saver = LazyListState.Saver) {
         LazyListState()
     }
-    val detailedListState = rememberSaveable(saver = LazyListState.Saver) {
+    val detailedListState = retainedState?.detailedListState ?: rememberSaveable(saver = LazyListState.Saver) {
         LazyListState()
     }
-    val gridState = rememberSaveable(saver = LazyGridState.Saver) {
+    val gridState = retainedState?.gridState ?: rememberSaveable(saver = LazyGridState.Saver) {
         LazyGridState()
     }
     LaunchedEffect(
@@ -93,14 +104,13 @@ fun HistoryScreen(
         listMode,
         isRefreshing,
         selectedItemsIds.size,
-        showContinueReadingButton,
         contentPadding,
     ) {
         Log.d(
             MainRouteFlickerLogTag,
             "history screen state items=${items.size} contentItems=${contentItems.size} " +
                 "quickItems=${quickFilter?.items?.size ?: -1} listMode=$listMode refreshing=$isRefreshing " +
-                "selected=${selectedItemsIds.size} continue=$showContinueReadingButton " +
+                "selected=${selectedItemsIds.size} " +
                 "paddingTop=${contentPadding.calculateTopPadding()} paddingBottom=${contentPadding.calculateBottomPadding()} " +
                 "visibleGrid=${contentItems.contentAtVisibleIndex(gridState.firstVisibleItemIndex)} " +
                 "visibleList=${contentItems.contentAtVisibleIndex(listState.firstVisibleItemIndex)} " +
@@ -122,10 +132,11 @@ fun HistoryScreen(
     KototoroContentListScreen(
         modifier = modifier,
         contentPadding = contentPadding,
-        items = contentItems,
-        pagingItems = pagingItems,
+        items = retainedState?.displayedItems ?: contentItems,
+        pagingItems = retainedState?.displayedPagingItems ?: pagingItems,
         listMode = listMode,
-        isRefreshing = isRefreshing,
+        isRefreshing = isRefreshing ||
+            (retainedState?.pagingIsRefreshing == true && retainedState.useRetainedPagingSnapshot == false),
         pullRefreshEnabled = pullRefreshEnabled,
         showRemoveOption = true,
         onRefresh = onRefresh,
@@ -136,6 +147,31 @@ fun HistoryScreen(
         onItemClick = { item ->
             if (selectedItemsIds.isNotEmpty()) {
                 hapticFeedback.performSelectionHapticFeedback()
+            }
+            retainedState?.let { state ->
+                val (firstVisibleIndex, firstVisibleScrollOffset) = when (listMode) {
+                    ListMode.GRID, ListMode.COMPACT_GRID ->
+                        state.gridState.firstVisibleItemIndex to state.gridState.firstVisibleItemScrollOffset
+                    ListMode.LIST ->
+                        state.listState.firstVisibleItemIndex to state.listState.firstVisibleItemScrollOffset
+                    ListMode.DETAILED_LIST ->
+                        state.detailedListState.firstVisibleItemIndex to state.detailedListState.firstVisibleItemScrollOffset
+                }
+                val snapshotItems = state.currentRetainedSnapshot
+                    ?.takeIf { state.useRetainedPagingSnapshot }
+                    ?.items
+                    ?: pagingItems?.itemSnapshotList?.items.orEmpty()
+                // History renders a section/list header row at layout index 0
+                // ahead of any leading `items` and the paging rows.
+                val pagingAnchorIndex = (firstVisibleIndex - contentItems.size - 1).coerceAtLeast(0)
+                state.captureOnNavigate(
+                    item,
+                    snapshotItems,
+                    firstVisibleIndex,
+                    firstVisibleScrollOffset,
+                    listMode,
+                    pagingAnchorIndex,
+                )
             }
             onItemClick(item)
         },
@@ -151,9 +187,8 @@ fun HistoryScreen(
                 quickFilter = quickFilter.takeIf { showQuickFilterInline },
                 isStatsEnabled = isStatsEnabled,
                 onStatsClick = onStatsClick,
-                showContinueReadingButton = showContinueReadingButton && selectedItemsIds.isEmpty(),
-                onContinueReadingClick = onContinueReadingClick,
                 onQuickFilterOptionClick = onQuickFilterOptionClick,
+                statsSummary = statsSummary,
             )
         },
     )
@@ -164,47 +199,21 @@ private fun HistoryHeader(
     quickFilter: QuickFilter?,
     isStatsEnabled: Boolean,
     onStatsClick: () -> Unit,
-    showContinueReadingButton: Boolean,
-    onContinueReadingClick: () -> Unit,
     onQuickFilterOptionClick: (ListFilterOption) -> Unit,
+    statsSummary: org.skepsun.kototoro.stats.domain.StatsDashboard?,
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            if (isStatsEnabled) {
-                AssistChip(
-                    onClick = onStatsClick,
-                    leadingIcon = {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_bar_chart),
-                            contentDescription = null,
-                            modifier = Modifier.padding(end = 4.dp)
-                        )
-                    },
-                    label = { Text(stringResource(R.string.statistics)) }
-                )
-            }
-            if (showContinueReadingButton) {
-                AssistChip(
-                    onClick = onContinueReadingClick,
-                    leadingIcon = {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_read),
-                            contentDescription = null,
-                            modifier = Modifier.padding(end = 4.dp),
-                        )
-                    },
-                    label = { Text(stringResource(R.string._continue)) },
-                )
-            }
+        if (isStatsEnabled && statsSummary != null && statsSummary.hasAnyActivity()) {
+            HistoryStatsSummaryCard(
+                dashboard = statsSummary,
+                onClick = onStatsClick,
+                modifier = Modifier.padding(horizontal = AppLayoutTokens.screenHorizontalPadding),
+            )
+            Spacer(modifier = Modifier.height(10.dp))
         }
 
         if (quickFilter != null) {
@@ -214,6 +223,10 @@ private fun HistoryHeader(
             )
         }
     }
+}
+
+private fun org.skepsun.kototoro.stats.domain.StatsDashboard.hasAnyActivity(): Boolean {
+    return totalDuration > 0L || sessionCount > 0 || workCount > 0 || activeDays > 0
 }
 
 private fun QuickFilter.withMacroOptionsFirst(): QuickFilter {

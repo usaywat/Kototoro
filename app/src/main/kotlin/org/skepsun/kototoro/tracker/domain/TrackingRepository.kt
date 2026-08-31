@@ -50,6 +50,24 @@ import javax.inject.Inject
 
 private const val NO_ID = 0L
 
+/**
+ * Post-update-check summary scoped to tracked favourite works.
+ */
+data class FavouriteUpdatesSummary(
+    val worksWithUpdates: Int,
+    val newChapters: Int,
+)
+
+/**
+ * Counts pending updates from raw favourite track rows: how many works have new chapters
+ * and how many new chapters there are in total. Extracted so it can be unit tested without
+ * a database.
+ */
+internal fun summarizeFavouriteTracks(tracks: List<TrackEntity>): FavouriteUpdatesSummary = FavouriteUpdatesSummary(
+    worksWithUpdates = tracks.count { it.newChapters > 0 },
+    newChapters = tracks.sumOf { it.newChapters.coerceAtLeast(0) },
+)
+
 @Reusable
 class TrackingRepository @Inject constructor(
     private val db: MangaDatabase,
@@ -60,7 +78,7 @@ class TrackingRepository @Inject constructor(
     private val workAggregateRepository: WorkAggregateRepository,
 ) {
 
-    private var isGcCalled = AtomicBoolean(false)
+    private val isGcCalled = AtomicBoolean(false)
 
     suspend fun getNewChaptersCount(mangaId: Long): Int {
         val anchorMangaId = resolvePersistableTrackAnchorMangaId(mangaId) ?: return 0
@@ -105,7 +123,7 @@ class TrackingRepository @Inject constructor(
     fun observeUpdatedContentCount(): Flow<Int> {
         return db.getTracksDao().observeUpdateContentCount()
             .distinctUntilChanged()
-            .onStart { gcIfNotCalled() }
+            .onStart { gcIfNeeded() }
     }
 
     fun observeUnreadUpdatesCount(): Flow<Int> {
@@ -122,7 +140,7 @@ class TrackingRepository @Inject constructor(
                 workAggregateRepository.buildTrackingAggregates(tracks)
                     .mapNotNull { aggregate -> aggregate.toContentTracking() }
             }.distinctUntilChanged()
-            .onStart { gcIfNotCalled() }
+            .onStart { gcIfNeeded() }
     }
 
     fun createUpdatedPagingSource(filterOptions: Set<ListFilterOption>): PagingSource<Int, ContentTracking> {
@@ -135,18 +153,16 @@ class TrackingRepository @Inject constructor(
         }
     }
 
-    fun observeAllTracks(limit: Int, filterOptions: Set<ListFilterOption>): Flow<List<ContentTracking>> {
-        return db.getTracksDao().observeAllTracks(limit, filterOptions)
-            .mapLatest { tracks ->
-                workAggregateRepository.buildTrackingAggregates(tracks)
-                    .mapNotNull { aggregate -> aggregate.toContentTracking() }
-            }.distinctUntilChanged()
-            .onStart { gcIfNotCalled() }
-    }
-
-    fun observeAllTrackingLogItems(limit: Int, filterOptions: Set<ListFilterOption>): Flow<List<TrackingLogItem>> {
-        return observeAllTracks(limit, filterOptions)
-            .mapLatest { tracks -> resolveAllTrackingLogItems(tracks) }
+    fun createAllTrackingLogItemsPagingSource(
+        limit: Int,
+        filterOptions: Set<ListFilterOption>,
+    ): PagingSource<Int, TrackingLogItem> = BatchMappingPagingSource(
+        delegate = db.getTracksDao().pagingAllTracks(limit, filterOptions),
+        diagnosticLabel = "feed-all-tracks",
+    ) { tracks ->
+        val contentTracks = workAggregateRepository.buildTrackingAggregates(tracks)
+            .mapNotNull { aggregate -> aggregate.toContentTracking() }
+        resolveAllTrackingLogItems(contentTracks)
     }
 
     suspend fun getTracks(offset: Int, limit: Int): List<ContentTracking> {
@@ -155,10 +171,24 @@ class TrackingRepository @Inject constructor(
             .mapNotNull { aggregate -> aggregate.toContentTracking() }
     }
 
+    /**
+     * Counts tracked favourite works that currently have new chapters and the total number
+     * of pending new chapters, scoped to favourite categories with tracking enabled
+     * (the same scope [TrackWorker] checks). Read by the favourites pull-to-refresh flow
+     * to build a result toast after the one-shot update check finishes.
+     */
+    suspend fun getFavouriteUpdatesSummary(): FavouriteUpdatesSummary {
+        val entityIds = db.getWorkFavouritesDao().findTrackedEntityIds()
+        if (entityIds.isEmpty()) {
+            return FavouriteUpdatesSummary(worksWithUpdates = 0, newChapters = 0)
+        }
+        return summarizeFavouriteTracks(db.getTracksDao().findByEntityIds(entityIds))
+    }
+
     fun observeTrackDebugItems(): Flow<List<TrackDebugItem>> {
         return db.getTracksDao().observeAll()
             .mapLatest { tracks -> resolveTrackDebugItems(tracks) }
-            .onStart { gcIfNotCalled() }
+            .onStart { gcIfNeeded() }
     }
 
     @Deprecated("")
@@ -219,13 +249,14 @@ class TrackingRepository @Inject constructor(
         db.getTracksDao().delete(anchorMangaId)
     }
 
-    fun observeTrackingLog(limit: Int, filterOptions: Set<ListFilterOption>): Flow<List<TrackingLogItem>> {
-        return db.getTrackLogsDao().observeAll(limit, filterOptions)
-            .mapLatest { items ->
-                resolveDisplayTrackingLogItems(items)
-            }
-            .onStart { gcIfNotCalled() }
-    }
+    fun createTrackingLogPagingSource(
+        limit: Int,
+        filterOptions: Set<ListFilterOption>,
+    ): PagingSource<Int, TrackingLogItem> = BatchMappingPagingSource(
+        delegate = db.getTrackLogsDao().pagingAll(limit, filterOptions),
+        diagnosticLabel = "feed-logs",
+        transform = ::resolveDisplayTrackingLogItems,
+    )
 
     suspend fun getLogsCount() = db.getTrackLogsDao().count()
 
@@ -446,11 +477,11 @@ class TrackingRepository @Inject constructor(
     private suspend fun syncTrackAnchors(): Int {
         val dao = db.getTracksDao()
         val existingIds = dao.findAllIds().toMutableSet()
-        val desiredIds = currentTrackAnchorIds()
-            .filter { mangaId -> db.getMangaDao().contains(mangaId) }
-            .toMutableSet()
+        val requestedIds = currentTrackAnchorIds()
+        val desiredIds = db.getMangaDao().findEntitiesByIds(requestedIds)
+            .mapTo(LinkedHashSet(), MangaEntity::id)
         for (mangaId in desiredIds) {
-            if (!existingIds.remove(mangaId) && db.getMangaDao().contains(mangaId)) {
+            if (!existingIds.remove(mangaId)) {
                 dao.upsert(
                     TrackEntity.create(
                         mangaId = mangaId,
@@ -472,8 +503,20 @@ class TrackingRepository @Inject constructor(
         }
         if (AppSettings.TRACK_FAVOURITES in settings.trackSources) {
             val trackedEntityIds = db.getWorkFavouritesDao().findTrackedEntityIds()
+            val identities = workResolver.resolveManyByEntityIds(trackedEntityIds)
+            val candidateIds = identities.values.flatMap { identity ->
+                buildList {
+                    identity.preferredMangaId?.let(::add)
+                    addAll(identity.localMangaIds)
+                }
+            }.distinct()
+            val existingMangaIds = db.getMangaDao().findEntitiesByIds(candidateIds)
+                .mapTo(HashSet(), MangaEntity::id)
             for (entityId in trackedEntityIds) {
-                resolveExistingTrackAnchorForEntity(entityId)?.let(ids::add)
+                val identity = identities[entityId] ?: continue
+                val anchorId = identity.preferredMangaId?.takeIf(existingMangaIds::contains)
+                    ?: identity.localMangaIds.firstOrNull(existingMangaIds::contains)
+                anchorId?.let(ids::add)
             }
         }
         return ids.toList()
@@ -583,7 +626,7 @@ class TrackingRepository @Inject constructor(
         }
     }
 
-    private suspend fun gcIfNotCalled() {
+    internal suspend fun gcIfNeeded() {
         if (isGcCalled.compareAndSet(false, true)) {
             gc()
         }
