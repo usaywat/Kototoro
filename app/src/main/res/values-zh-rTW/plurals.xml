@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <plurals name="items">
+        <item quantity="other">%1$d 個項目</item>
+    </plurals>
     <plurals name="new_chapters">
         <item quantity="other">%1$d 個新章節</item>
     </plurals>
@@ -19,12 +22,21 @@
         <item quantity="other">%1$d 個月前</item>
     </plurals>
     <plurals name="hours">
-        <item quantity="other">%1$d 小時</item>
+        <item quantity="other">%1$d 個小時</item>
     </plurals>
     <plurals name="minutes">
         <item quantity="other">%1$d 分鐘</item>
     </plurals>
-    <plurals name="items">
-        <item quantity="other">%1$d 個項目</item>
+    <plurals name="home_updates_new_chapters">
+        <item quantity="other">%1$d 個新章節</item>
+    </plurals>
+    <plurals name="home_enabled_sources">
+        <item quantity="other">已啟用 %1$d 個內容源</item>
+    </plurals>
+    <plurals name="history_grouped_records">
+        <item quantity="other">%1$d 條記錄</item>
+    </plurals>
+    <plurals name="history_grouped_sources">
+        <item quantity="other">%1$d 個來源</item>
     </plurals>
 </resources>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="source_presets">內容源預設</string>
+	<string name="create_preset">新預設</string>
+	<string name="edit_preset">編輯預設</string>
+	<string name="preset_name">預設名稱</string>
+	<string name="preset_languages">語言</string>
+	<string name="preset_sources">內容源</string>
+	<string name="preset_created">已建立預設</string>
+	<string name="preset_saved">已儲存預設</string>
+	<string name="preset_deleted">已刪除預設</string>
+	<string name="preset_activated">已啟動預設</string>
+	<string name="preset_deactivated">已停用預設</string>
+	<string name="no_presets">尚無預設</string>
+	<string name="no_presets_text">建立預設以在不同源設定之間快速切換</string>
+	<string name="manage_preset_sources">管理內容源預設</string>
+</resources>

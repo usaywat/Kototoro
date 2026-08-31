@@ -49,7 +49,7 @@
     <string name="settings">Settings</string>
     <string name="remote_sources">Content sources</string>
     <string name="source_origins">Source origins</string>
-    <string name="ireader_sources">IReader</string>
+    <string name="ireader_sources" translatable="false">IReader</string>
     <string name="ireader_extension_repositories">IReader Extension repositories</string>
     <string name="loading_">Loading…</string>
     <string name="computing_">Computing…</string>
@@ -121,11 +121,11 @@
     <string name="text_file_not_supported">Either pick a ZIP or CBZ file.</string>
     <string name="no_description">No description</string>
     <string name="clear_pages_cache">Clear page cache</string>
-    <string name="text_file_sizes">B|kB|MB|GB|TB</string>
+    <string name="text_file_sizes" translatable="false">B|kB|MB|GB|TB</string>
     <string name="standard">Standard</string>
     <string name="webtoon">Webtoon</string>
     <string name="read_mode">Read mode</string>
-    <string name="ai">AI</string>
+    <string name="ai" translatable="false">AI</string>
     <string name="reader_translation_long_press_hint">Long press Translation for language shortcuts</string>
     <string name="reader_translation_status_compact">Translating %1$d/%2$d</string>
     <string name="reader_page_turning_mode">Page turning mode</string>
@@ -376,7 +376,7 @@
     <string name="unread_updates">Unread updates</string>
     <string name="enabled_sources">Enabled sources</string>
     <string name="home_sources_overview">Sources</string>
-    <string name="home_source_breakdown_item">%1$s · %2$d</string>
+    <string name="home_source_breakdown_item" translatable="false">%1$s · %2$d</string>
     <string name="home_source_breakdown_empty">No enabled sources in this group</string>
     <string name="home_quick_access_subtitle">Open app-wide preferences without leaving the dashboard.</string>
     <string name="discover_empty_title">Nothing to discover yet</string>
@@ -393,7 +393,7 @@
     <string name="tracking_season_spring">Spring</string>
     <string name="tracking_season_summer">Summer</string>
     <string name="tracking_season_fall">Fall</string>
-    <string name="tracking_season_label">%1$s %2$d</string>
+    <string name="tracking_season_label" translatable="false">%1$s %2$d</string>
     <string name="discover_open_site">Open site</string>
     <string name="discover_open_local">Open local</string>
     <string name="discover_bind_local">Bind local</string>
@@ -402,7 +402,7 @@
     <string name="discover_total_episodes">Episodes</string>
     <string name="discover_tags">Tags</string>
     <string name="discover_no_summary">No summary available</string>
-    <string name="discover_score">%1$.1f</string>
+    <string name="discover_score" translatable="false">%1$.1f</string>
     <string name="discover_service_search_only">%1$s · Search only</string>
     <string name="discover_local_linked">Linked to local content</string>
     <string name="discover_local_unlinked">No local content linked yet</string>
@@ -669,8 +669,8 @@
     <string name="always">Always</string>
     <string name="preload_pages">Preload pages</string>
     <string name="logged_in_as">Logged in as %s</string>
-    <string name="nsfw">18+</string>
-    <string name="nsfw_16">16+</string>
+    <string name="nsfw" translatable="false">18+</string>
+    <string name="nsfw_16" translatable="false">16+</string>
     <string name="various_languages">Various languages</string>
     <string name="search_chapters">Find chapter</string>
     <string name="chapters_empty">No chapters in this manga</string>
@@ -1173,10 +1173,10 @@
     <string name="reader_super_resolution_noise_3">Ultra (3)</string>
     <string name="reader_super_resolution_cache_limit">Cache Buffer Limit</string>
     <string name="reader_super_resolution_cache_limit_summary">Limits space for upscaled images (Current setting: %1$s)</string>
-    <string name="reader_super_resolution_cache_limit_256">256 MB</string>
-    <string name="reader_super_resolution_cache_limit_512">512 MB</string>
-    <string name="reader_super_resolution_cache_limit_1024">1 GB</string>
-    <string name="reader_super_resolution_cache_limit_2048">2 GB</string>
+    <string name="reader_super_resolution_cache_limit_256" translatable="false">256 MB</string>
+    <string name="reader_super_resolution_cache_limit_512" translatable="false">512 MB</string>
+    <string name="reader_super_resolution_cache_limit_1024" translatable="false">1 GB</string>
+    <string name="reader_super_resolution_cache_limit_2048" translatable="false">2 GB</string>
     <string name="reader_super_resolution_cache_limit_unlimited">Unlimited</string>
     <string name="reader_super_resolution_clear_cache">Clear SR Cache</string>
     <string name="reader_super_resolution_clear_cache_summary">Manually clear all upscaled images from local storage</string>
@@ -1625,7 +1625,7 @@
     <string name="sync_auto_backup_enable_summary">Create local backups on a schedule. WebDAV backup can reuse them when keeping a local copy.</string>
     <string name="backups_output_directory">Backups output directory</string>
     <string name="last_successful_backup">Last successful backup: %s</string>
-    <string name="speed_value">x%.1f</string>
+    <string name="speed_value" translatable="false">x%.1f</string>
     <string name="lock_screen_rotation">Lock screen rotation</string>
     <string name="content_type_manga">Manga</string>
     <string name="content_type_hentai">Hentai</string>
@@ -1685,9 +1685,9 @@
     <string name="reader_translation_paddle_official_model_id">Official recognition model list</string>
     <string name="reader_translation_paddle_official_model_id_summary">Pick from the official model list to auto-fill the download URL and version</string>
     <string name="reader_translation_paddle_model_url">Local OCR model package URL</string>
-    <string name="reader_translation_paddle_model_url_default">https://github.com/skepsun/PaddleOCR_Models/releases/download/v1.0/ch_PP-OCRv4_mobile_det.zip</string>
+    <string name="reader_translation_paddle_model_url_default" translatable="false">https://github.com/skepsun/PaddleOCR_Models/releases/download/v1.0/ch_PP-OCRv4_mobile_det.zip</string>
     <string name="reader_translation_paddle_model_url_summary">Used when the model directory is empty. The app downloads and extracts the package, which must contain det.nb, rec.nb, and cls.nb</string>
-    <string name="reader_translation_paddle_model_version_default">v4_mobile</string>
+    <string name="reader_translation_paddle_model_version_default" translatable="false">v4_mobile</string>
     <string name="reader_translation_paddle_model_sha256_default"></string><!-- Empty SHA to skip verification by default -->
     <string name="reader_translation_paddle_model_version">Local OCR model version</string>
     <string name="reader_translation_paddle_model_version_summary">Version tag used for local cache, e.g. ppocrv4-20260306</string>
@@ -1768,7 +1768,7 @@
     <string name="reader_translation_source_lang_summary">Use Automatic to follow the current manga/source language shown on the details page</string>
     <string name="reader_translation_target_lang">Target language</string>
     <string name="translation_settings">Translation</string>
-    <string name="ai_settings">AI</string>
+    <string name="ai_settings" translatable="false">AI</string>
     <string name="ai_settings_entry_summary">Manage translation, image enhancement, video enhancement, and AI model features</string>
     <string name="ai_section_core">Models and API</string>
     <string name="ai_section_translation">Translation and language</string>
@@ -1852,22 +1852,22 @@
     <string name="reader_translation_api_provider_preset">LLM provider preset</string>
     <string name="reader_translation_api_provider_preset_summary">Auto-fill endpoint and default model for common OpenAI-compatible providers</string>
     <string name="reader_translation_api_provider_custom">Custom (manual)</string>
-    <string name="reader_translation_api_provider_openai">OpenAI</string>
-    <string name="reader_translation_api_provider_deepseek">DeepSeek</string>
+    <string name="reader_translation_api_provider_openai" translatable="false">OpenAI</string>
+    <string name="reader_translation_api_provider_deepseek" translatable="false">DeepSeek</string>
     <string name="reader_translation_api_provider_zhipu">Zhipu AI</string>
     <string name="reader_translation_api_provider_alibaba">Alibaba Cloud</string>
-    <string name="reader_translation_api_provider_moonshot">Moonshot AI</string>
-    <string name="reader_translation_api_provider_minimax">MiniMax: M2.5</string>
+    <string name="reader_translation_api_provider_moonshot" translatable="false">Moonshot AI</string>
+    <string name="reader_translation_api_provider_minimax" translatable="false">MiniMax: M2.5</string>
     <string name="reader_translation_api_provider_baidu">Baidu: ERNIE</string>
-    <string name="reader_translation_api_provider_anthropic">Anthropic</string>
-    <string name="reader_translation_api_provider_gemini">Google Gemini</string>
-    <string name="reader_translation_api_provider_openrouter">OpenRouter</string>
+    <string name="reader_translation_api_provider_anthropic" translatable="false">Anthropic</string>
+    <string name="reader_translation_api_provider_gemini" translatable="false">Google Gemini</string>
+    <string name="reader_translation_api_provider_openrouter" translatable="false">OpenRouter</string>
     <string name="reader_translation_e2e_api_settings_title">End-to-End API Settings</string>
     <string name="reader_translation_e2e_api_settings_summary">Configure endpoint, key, model, and concurrency for multimodal OCR + translation</string>
     <string name="reader_translation_e2e_api_intro_title">End-to-End API</string>
     <string name="reader_translation_e2e_api_intro_summary">Runs OCR understanding and translation in a single multimodal request. Local OCR models and the two-stage translation pipeline are bypassed.</string>
-    <string name="reader_translation_e2e_api_provider_gemini">Gemini</string>
-    <string name="reader_translation_e2e_api_provider_ollama">Ollama</string>
+    <string name="reader_translation_e2e_api_provider_gemini" translatable="false">Gemini</string>
+    <string name="reader_translation_e2e_api_provider_ollama" translatable="false">Ollama</string>
     <string name="reader_translation_e2e_api_concurrency">API parallel translation concurrency</string>
     <string name="reader_translation_e2e_api_concurrency_summary">How many pages can be translated in parallel. Increase carefully to avoid rate limits.</string>
     <string name="reader_translation_api_model">Online translation model</string>
@@ -2170,7 +2170,7 @@
     <string name="by_date">Date</string>
     <string name="popularity">Popularity</string>
     <string name="scrobbler_auth_required">Sign in to %s to continue</string>
-    <string name="scrobbler_search_requires_login_label">%1$s · %2$s</string>
+    <string name="scrobbler_search_requires_login_label" translatable="false">%1$s · %2$s</string>
     <string name="scrobbler_search_auth_hint">Search works without login. Sign in to link with %s.</string>
     <string name="scrobbler_auth_intro">Sign in to set up integration with %s. This will allow you to track your manga reading progress and status</string>
     <string name="unstable_feature">Unstable feature</string>
@@ -2268,7 +2268,7 @@
     <string name="details_reading_status">Reading status</string>
     <string name="details_rating_and_status">Rating and status</string>
     <string name="details_rating">Rating</string>
-    <string name="details_rating_value">%1$s / 10</string>
+    <string name="details_rating_value" translatable="false">%1$s / 10</string>
     <string name="details_rating_requires_tracking">Bind this work in a logged-in tracking source before rating</string>
     <string name="details_reading_language">Reading language</string>
     <string name="details_playback_language">Playback language</string>
@@ -2425,7 +2425,7 @@
     <string name="error_corrupted_zip">Corrupted ZIP archive (%s)</string>
     <string name="discord" translatable="false">Discord</string>
     <string name="discord_rpc">Discord Rich Presence</string>
-    <string name="discord_token">Discord Token</string>
+    <string name="discord_token" translatable="false">Discord Token</string>
     <string name="discord_token_summary">Sign in with Discord to enable Rich Presence</string>
     <string name="discord_token_description">Enter your Discord Token or click %s to get it using browser</string>
     <string name="discord_token_hint">Paste your Discord Token here</string>
@@ -2611,12 +2611,12 @@
     <string name="paste_js_content">Paste JavaScript source content</string>
 	<string name="source_type">Source Type</string>
 		<string name="source_type_native">Built-in</string>
-		<string name="source_type_cloudstream">Cloudstream</string>
+		<string name="source_type_cloudstream" translatable="false">Cloudstream</string>
 		<string name="source_type_mihon">Mihon</string>
 	<string name="source_type_tsundoku">Tsundoku</string>
-	<string name="source_type_aniyomi">Aniyomi</string>
-	<string name="source_type_legado">Legado</string>
-	<string name="source_type_tvbox">TVBox</string>
+	<string name="source_type_aniyomi" translatable="false">Aniyomi</string>
+	<string name="source_type_legado" translatable="false">Legado</string>
+	<string name="source_type_tvbox" translatable="false">TVBox</string>
 	<string name="tvbox_site_key_title">Site key</string>
 	<string name="tvbox_site_api_title">Site API</string>
 	<string name="tvbox_site_type_title">Site type</string>
@@ -2676,7 +2676,7 @@
     <string name="built_in_sources_directory">Built-in Sources</string>
     <string name="mihon_sources_directory">Mihon Extensions Directory</string>
     <string name="aniyomi_sources_directory">Aniyomi Extensions Directory</string>
-    <string name="source_tag_json">Legado</string>
+    <string name="source_tag_json" translatable="false">Legado</string>
     <string name="json_sources" translatable="false">JSON</string>
     <string name="json_sources_summary">Manage imported JSON sources</string>
     <string name="import_json">Import Legado</string>
@@ -2743,14 +2743,14 @@
     <string name="novel">Novel</string>
     <string name="video">Video</string>
     <string name="other">Other</string>
-    <string name="search_only_badge">S</string>
+    <string name="search_only_badge" translatable="false">S</string>
     
     <!-- Source Filters -->
     <string name="native_sources">Native Sources</string>
     
     <!-- Mihon Extension Sources -->
-    <string name="mihon_sources">Mihon</string>
-    <string name="aniyomi_sources">Aniyomi</string>
+    <string name="mihon_sources" translatable="false">Mihon</string>
+    <string name="aniyomi_sources" translatable="false">Aniyomi</string>
     <string name="mihon_extensions">Mihon Extensions</string>
     <string name="mihon_extensions_summary">Manage Mihon extension sources</string>
     <string name="aniyomi_extensions">Aniyomi Extensions</string>
@@ -2758,7 +2758,7 @@
     <string name="extensions">APK extension</string>
     <string name="extension_management">Extension management</string>
     <string name="extension_management_summary">Manage repositories, JSON sources, APK extensions, and JAR parsers</string>
-    <string name="extensions_summary_pattern">Mihon %1$d · Aniyomi %2$d · IReader %3$d</string>
+    <string name="extensions_summary_pattern" translatable="false">Mihon %1$d · Aniyomi %2$d · IReader %3$d</string>
     <string name="filter_extensions_by_language">Filter extensions by language</string>
     <string name="filter_extensions_by_language_summary">Only show Mihon and Aniyomi extensions that match your selected content languages</string>
     <string name="filter_extensions_by_selected_content_languages">Filter extensions: selected content languages</string>
@@ -2798,13 +2798,13 @@
     <string name="packages_tab_title">Packages (%1$d)</string>
     <string name="repository_location_inline">Inline</string>
     <string name="repository_location_preset">Preset</string>
-	    <string name="source_type_jar">JAR</string>
+	    <string name="source_type_jar" translatable="false">JAR</string>
 	    <string name="source_type_builtin_short">Native</string>
 	    <string name="cloudstream_extension_repositories">Cloudstream Repositories</string>
-    <string name="source_type_tvbox_json">TVBox JSON</string>
+    <string name="source_type_tvbox_json" translatable="false">TVBox JSON</string>
     <string name="source_type_legado_json">Legado JSON</string>
-    <string name="source_type_mihon_apk">Mihon APK</string>
-    <string name="source_type_aniyomi_apk">Aniyomi APK</string>
+    <string name="source_type_mihon_apk" translatable="false">Mihon APK</string>
+    <string name="source_type_aniyomi_apk" translatable="false">Aniyomi APK</string>
     <string name="source_type_ireader_apk">IReader APK</string>
     <string name="source_type_tsundoku_apk">Tsundoku APK</string>
     <string name="source_type_js_source">JS source</string>
@@ -2828,7 +2828,7 @@
     <string name="unified_sources_imported_sources">%1$d source(s) imported</string>
     <string name="unified_sources_cannot_open_repository_file">Cannot open repository file</string>
     <string name="unified_sources_repository_cannot_refresh">Repository cannot be refreshed</string>
-    <string name="unified_sources_http_error">HTTP %1$d</string>
+    <string name="unified_sources_http_error" translatable="false">HTTP %1$d</string>
     <string name="unified_sources_empty_response_body">Empty response body</string>
     <string name="unified_sources_unsupported_repository_kind">Unsupported extension repository kind: %1$s</string>
     <string name="unified_sources_delete_selected_message">Delete %1$d package(s) for the selected sources?</string>
@@ -2871,7 +2871,7 @@
     <string name="aniyomi_extension_repositories">Aniyomi Repositories</string>
     <string name="add_extension_repository">Add repository</string>
     <string name="add_extension_repository_message">Paste a compatible repository URL. Both the repository root and a URL ending with index.min.json are supported.</string>
-    <string name="extension_repository_url_hint">https://example.org/extensions/index.min.json</string>
+    <string name="extension_repository_url_hint" translatable="false">https://example.org/extensions/index.min.json</string>
     <string name="extension_repository_url_required">Repository URL is required</string>
     <string name="refresh_repositories">Refresh repositories</string>
     <string name="refresh_action">Refresh</string>
@@ -2934,7 +2934,7 @@
     <string name="trust_extension_repository_message">Repository: %1$s\nWebsite: %2$s\nSHA-256 fingerprint:\n%3$s\n\nVerify this fingerprint with the publisher before trusting this repository.</string>
     <string name="untrusted_extension_message">%1$s (%2$s) is installed, but its signature does not match the selected repository fingerprint.\n\nRepository fingerprint: %3$s\n\nRemove the installed package before reinstalling from this repository.</string>
     <string name="incompatible_extension_message">%1$s %2$s cannot be installed because its library version (%3$s) is outside Kototoro\'s supported range.</string>
-    <string name="eighteen_plus">18+</string>
+    <string name="eighteen_plus" translatable="false">18+</string>
     <plurals name="source_count">
         <item quantity="one">%d source</item>
         <item quantity="other">%d sources</item>
@@ -3227,7 +3227,7 @@
     <string name="epub_ebook_description">EPUB Ebook: %s</string>
     <string name="rank">Rank</string>
     <string name="episode_number_format">Episode %1$s\n\n%2$s</string>
-    <string name="source_type_ireader">IReader</string>
+    <string name="source_type_ireader" translatable="false">IReader</string>
 	<string name="source_type_lnreader">LNReader</string>
 	<string name="lnreader_plugins">LNReader Plugins</string>
 	<string name="installing_plugin">Installing %s…</string>
@@ -3270,10 +3270,10 @@
     <string name="reader_translation_task_diag_sample_out">   [out] %1$s</string>
     <string name="reader_translation_task_diag_empty">&lt;empty&gt;</string>
     <string name="reader_translation_task_stat_total">Total Time: %1$sms</string>
-    <string name="reader_translation_task_stat_ocr">OCR: %1$sms</string>
+    <string name="reader_translation_task_stat_ocr" translatable="false">OCR: %1$sms</string>
     <string name="reader_translation_task_stat_trans">Trans: %1$sms</string>
     <string name="reader_translation_task_stat_render">Render: %1$sms</string>
-    <string name="reader_translation_task_stat_pipe_strat">OCR Pipeline: %1$s</string>
+    <string name="reader_translation_task_stat_pipe_strat" translatable="false">OCR Pipeline: %1$s</string>
     <string name="reader_translation_task_stat_pipe_fb">Pipeline Fallback: %1$s</string>
     <string name="reader_translation_task_stat_roi_box">ROI-first boxes: %1$s</string>
     <string name="reader_translation_task_stat_ocr_eng">OCR Engine: %1$s</string>
@@ -3287,12 +3287,12 @@
     <string name="reader_translation_task_bench_title">[Chapter Baseline]</string>
     <string name="reader_translation_task_bench_sampled">Sampled: %1$d/%2$d pg</string>
     <string name="reader_translation_task_bench_dist_total">Total Time</string>
-    <string name="reader_translation_task_bench_dist_ocr">OCR</string>
+    <string name="reader_translation_task_bench_dist_ocr" translatable="false">OCR</string>
     <string name="reader_translation_task_bench_dist_trans">Translation</string>
     <string name="reader_translation_task_bench_dist_render">Rendering</string>
     <string name="reader_translation_task_bench_dist_ocr_cache">OCR Cache Hit</string>
     <string name="reader_translation_task_bench_dist_render_cache">Render Cache Hit</string>
-    <string name="reader_translation_task_bench_dist_pipe">OCR Pipeline</string>
+    <string name="reader_translation_task_bench_dist_pipe" translatable="false">OCR Pipeline</string>
     <string name="reader_translation_task_bench_dist_pipe_fb">Pipeline Fallback</string>
     <string name="reader_translation_task_bench_dist_roi_box">ROI-first Boxes</string>
     <string name="reader_translation_task_bench_dist_ocr_sel">Selected OCR</string>
@@ -3355,7 +3355,7 @@
     <string name="pref_rail_animation_intensity_summary">Adjusts how strongly horizontal and vertical content cards translate, fade, and scale while sliding.</string>
     <string name="pref_vertical_list_rail_animation">Vertical list card animation</string>
     <string name="pref_vertical_list_rail_animation_summary">Applies the slide animation to vertical card lists. Turn it off if scrolling feels janky.</string>
-    <string name="badge_nsfw">18+</string>
+    <string name="badge_nsfw" translatable="false">18+</string>
     <string name="pref_popup_radius">Popup menu corner radius</string>
     <string name="loading_circle_style_thick_straight">Thick Straight</string>
     <string name="loading_circle_style_thick_wavy">Thick Wavy</string>
